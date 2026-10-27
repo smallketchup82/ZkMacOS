@@ -17,6 +17,8 @@ PREFIX="$(mkdir -p "$2" && cd "$2" && pwd)"
 MESA_VERSION=26.3.0-rc1
 MOLTENVK_DIR="${MOLTENVK_DIR:-$(brew --prefix molten-vk)}"
 LLVM_PREFIX="${LLVM_PREFIX:-$(brew --prefix llvm)}"
+# Mono also ships pkg-config, but it cannot discover Homebrew dependencies.
+export PKG_CONFIG="$(brew --prefix)/bin/pkg-config"
 MESA_SRC="$WORK_DIR/mesa-$MESA_VERSION"
 LIBCLC_VERSION=22.1.8.3
 LIBCLC_SRC="$WORK_DIR/mesa-libclc-$LIBCLC_VERSION"
