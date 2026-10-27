@@ -29,6 +29,7 @@ if command -v ccache >/dev/null; then
 fi
 ENGINE_CONFIGURATION="$(printf '%s\n' "${ENGINE_CMAKE_ARGS[@]}" | shasum -a 256)"
 if [ ! -f build/engine/CMakeCache.txt ] || [ "${RECONFIGURE_ENGINE:-0}" = 1 ] || \
+	! grep -Fxq "VERSION_OVERRIDE:STRING=$ENGINE_VERSION" build/engine/CMakeCache.txt || \
 	[ "$(cat build/engine/zk-configuration.sha256 2>/dev/null || true)" != "$ENGINE_CONFIGURATION" ]; then
 	cmake "${ENGINE_CMAKE_ARGS[@]}" 2>&1 | tee build/logs/engine-configure.log
 	printf '%s\n' "$ENGINE_CONFIGURATION" > build/engine/zk-configuration.sha256

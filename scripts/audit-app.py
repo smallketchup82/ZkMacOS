@@ -55,6 +55,10 @@ for file in app.rglob('*'):
     if result.returncode:
         errors.append('Invalid ad-hoc signature: ' + relative)
 subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
+expected_version = json.loads((Path(__file__).resolve().parents[1] / 'sources.lock.json').read_text())['recoil']['engine_version']
+engine_version = subprocess.check_output([str(app / 'Contents/MacOS/spring'), '--sync-version'], text=True).strip()
+if engine_version != expected_version:
+    errors.append(f'Engine version mismatch: expected {expected_version}, got {engine_version}')
 report = {'application': app.name, 'native_binaries': len(binaries), 'all_arm64': not errors, 'errors': errors}
 print(json.dumps(report, indent=2))
 if errors:
