@@ -14,8 +14,8 @@ or client installation is copied into the application.
 Published DMGs can be installed manually or through this repository's Homebrew
 tap. Publishing a non-prerelease GitHub release with the DMG and its checksum
 triggers `.github/workflows/update-homebrew.yml`, which verifies the download
-and commits a versioned cask. See the README for installation, upgrade commands,
-and the first-release setup. Homebrew upgrades replace the app and preserve
+and commits a versioned cask. See the README for installation and upgrade
+commands. Homebrew upgrades replace the app and preserve
 Application Support; there is no silent in-app updater.
 
 The owner intentionally distributes without Developer ID or notarization.

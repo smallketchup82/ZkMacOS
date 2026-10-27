@@ -54,14 +54,7 @@ brew install --cask smallketchup82/zkmacos/zkmacos
 Open **Zero-K.app** from Applications. You may still need to approve the app
 in macOS using the instructions below.
 
-**Availability:** the cask is generated when the first non-prerelease GitHub
-release containing the DMG and its checksum is published. Until that release
-and the **Update Homebrew cask** workflow succeed, the installation command
-will not find a cask. Check
-[Releases](https://github.com/smallketchup82/ZkMacOS/releases) for availability;
-if none are published, use a trusted shared DMG or build locally.
-
-For subsequent releases, quit Zero-K, then run:
+To update, quit Zero-K, then run:
 
 ```sh
 brew update
@@ -84,19 +77,16 @@ Uninstalling the cask also leaves your Application Support data in place.
 
 ### Method 2: Manual
 
-1. Open [ZkMacOS Releases](https://github.com/smallketchup82/ZkMacOS/releases)
-   and download `Zero-K-macOS-arm64.dmg` from a release with a binary attached.
-   **If there are no releases or no DMG attached, a public prebuilt download is
-   not available yet.** You can build locally using the instructions below or
-   use a DMG supplied by a maintainer you trust.
+1. Open the [latest ZkMacOS release](https://github.com/smallketchup82/ZkMacOS/releases/latest)
+   and download `Zero-K-macOS-arm64.dmg` and its `.sha256` checksum file.
 2. Open the DMG and drag **Zero-K** onto **Applications** using the arrow.
 3. Eject the disk image and open **Zero-K.app** from Applications.
 4. Approve the app in macOS if needed, then sign in or choose offline play.
    The lobby downloads the game and required maps as needed; these are not
    included in the DMG.
 
-If a release includes a checksum file, place it beside the DMG and verify it
-in Terminal from that directory:
+Place the checksum file beside the DMG and verify it in Terminal from that
+directory:
 
 ```sh
 shasum -a 256 -c Zero-K-macOS-arm64.dmg.sha256
