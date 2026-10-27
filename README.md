@@ -1,4 +1,4 @@
-# ⚠️ READ BEFORE PLAYING: UNOFFICIAL, EXPERIMENTAL CLIENT
+# ⚠️ READ BEFORE PLAYING ⚠️ 
 
 > 1. **DO NOT send ZkMacOS bug reports to the official Zero-K developers. [File issues in this repository](https://github.com/smallketchup82/ZkMacOS/issues) instead.**
 > 2. **ZkMacOS is a third-party client. It is not endorsed by or officially supported by the Zero-K developers.**
