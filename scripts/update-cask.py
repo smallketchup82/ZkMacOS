@@ -1,5 +1,6 @@
 """Publish a versioned Homebrew cask from a released DMG and its checksum."""
 from pathlib import Path
+from datetime import date
 import argparse
 import hashlib
 import json
@@ -13,10 +14,11 @@ ASSET = 'Zero-K-macOS-arm64.dmg'
 
 
 def release_version(tag):
-    match = re.fullmatch(r'v?([0-9]+\.[0-9]+\.[0-9]+)', tag)
+    match = re.fullmatch(r'([0-9]{4})([0-9]{2})\.([0-9]{2})\.(0|[1-9][0-9]*)', tag)
     if not match:
-        raise ValueError('Use a release tag such as v0.1.0; prerelease tags are not supported.')
-    return match[1]
+        raise ValueError('Use YYYYMM.DD.PATCH, such as 202610.27.0; prerelease tags are not supported.')
+    date(int(match[1]), int(match[2]), int(match[3]))
+    return tag
 
 
 def update_cask(tag, dmg, checksum, output, repository):

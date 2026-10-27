@@ -335,7 +335,9 @@ and where its changes now live.
    dist/Zero-K-macOS-arm64.dmg.sha256
    ```
 
-5. Create a release tag using `vMAJOR.MINOR.PATCH` (for example `v0.1.0`).
+5. Create a CalVer release tag using `YYYYMM.DD.PATCH` (for example
+   `202610.27.0`). Use a two-digit day, start the patch at `0`, and increment it
+   for additional releases on the same day. Reset it to `0` on a new date.
    Attach both files to a **draft** GitHub release before publishing it.
    Publish it as a non-prerelease to update the Homebrew channel, with the
    matching source revisions, patches, build instructions, and third-party
@@ -359,7 +361,7 @@ workflow**, supplying the release tag. You can also prepare the cask locally
 with an authenticated GitHub CLI:
 
 ```sh
-uv run --python python3 scripts/update-cask.py --tag v0.1.0
+uv run --python python3 scripts/update-cask.py --tag 202610.27.0
 ```
 
 GitHub Actions needs permission to write repository contents and push the cask

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Published release tag (for example v0.1.0)
+        description: Published CalVer release tag (for example 202610.27.0)
         required: true
         type: string
 
