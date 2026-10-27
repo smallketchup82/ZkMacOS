@@ -48,8 +48,13 @@ repository as a tap and install the cask:
 
 ```sh
 brew tap smallketchup82/zkmacos https://github.com/smallketchup82/ZkMacOS.git
+brew trust --cask smallketchup82/zkmacos/zkmacos
 brew install --cask smallketchup82/zkmacos/zkmacos
 ```
+
+The trust command authorizes this third-party cask specifically, rather than
+every package in the tap. Review this repository before granting trust. If
+your older Homebrew version does not provide `brew trust`, omit that line.
 
 Open **Zero-K.app** from Applications. You may still need to approve the app
 in macOS using the instructions below.
