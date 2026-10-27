@@ -34,6 +34,10 @@ permission when prompted. This does not rebuild the engine. The build applies
 it without reopening into tab defaults on macOS 27. The installed Homebrew
 tool is unchanged.
 
+Fresh profiles start with windowed lobby and game, Retina text and UI, Low
+graphics, three-finger tilt disabled, and cursor locking disabled. Saved user
+preferences take precedence; updating the app does not reset them.
+
 The read-only DMG contains the audited app and installer artwork, without
 Application Support, source worktrees, logs or developer caches. Do not
 copy personal data into the app before sharing it. The same app should work
