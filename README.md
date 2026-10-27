@@ -162,6 +162,24 @@ personal data: do not upload the whole directory with a bug report. Review logs
 and redact credentials, authentication tickets, and personal information before
 sharing them.
 
+### Notchful fullscreen
+
+Enable **Notchful fullscreen** in the lobby's **Graphics** settings or
+**Settings → Graphics → Display** in game. It is off by default. Quit Zero-K
+completely and reopen it after changing the setting, then select fullscreen.
+
+The resource HUD switches automatically when fullscreen actually covers the
+notch area. It reads the current display's notch boundaries from macOS and
+places metal and energy on opposite sides, with a small margin. The compact
+icons, bars, quantities and flow indicators use the matching top-bar strip.
+Quantities pass through to the icons' tooltips; Ctrl-click reserve controls
+remain available.
+
+Windowed mode, fullscreen below the notch, and displays without a notch keep
+the default Zero-K layout. Other HUD elements retain their normal arrangement.
+Notchful fullscreen uses the current desktop without creating a separate macOS
+Space. The native geometry check follows display and scaling changes.
+
 ### Steam integration
 
 Start the normal macOS Steam client and sign in before opening Zero-K. Use the

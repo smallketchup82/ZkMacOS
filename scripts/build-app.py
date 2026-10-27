@@ -100,6 +100,7 @@ info = {'CFBundleExecutable': 'Zero-K', 'CFBundleIdentifier': 'org.zerok.macos',
         'CFBundleDisplayName': 'Zero-K', 'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': version,
         'CFBundleVersion': os.environ.get('ZKMACOS_BUILD_NUMBER', '1'),
         'LSMinimumSystemVersion': '26.0', 'NSHighResolutionCapable': True,
+        'NSPrefersDisplaySafeAreaCompatibilityMode': False,
         'LSArchitecturePriority': ['arm64'], 'LSUIElement': True, 'CFBundleIconFile': 'Zero-K.icns',
         'NSHumanReadableCopyright': 'Zero-K contributors; see Resources/licenses'}
 (contents / 'Info.plist').write_bytes(plistlib.dumps(info))

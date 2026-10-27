@@ -7,14 +7,16 @@
     "circuitai_patch_sha256": "d735584e956555895756ae2d6cc542e40f5433398f0eff7fdc6d0cc0a47970ea",
     "patches": {
       "recoil-metalfx-spatial.patch": "037e24b3848151ca6eec30682bae74fca0b2b13008211407ea86ddd7ece70586",
-      "recoil-macos-fullscreen.patch": "a9ddc3ad5ec223846146e7711463eeb3658820a7a2da91bab23f32a7eed186a5"
+      "recoil-macos-fullscreen.patch": "a9ddc3ad5ec223846146e7711463eeb3658820a7a2da91bab23f32a7eed186a5",
+      "recoil-macos-notch.patch": "ec79b90d25fa2db4bcfa3794962131dfacbf43dda3697110cbcc379d586aed99"
     }
   },
   "chobby": {
     "url": "https://github.com/smallketchup82/Chobby.git",
     "revision": "fbcc816be8970fa26d6bf3aa14c238ce70af2530",
     "patches": {
-      "chobby-metalfx-spatial.patch": "6c14bedae76cf7d6d402157cd177541db79bc24e2b5f47bbc2239ad1f50f0951"
+      "chobby-metalfx-spatial.patch": "6c14bedae76cf7d6d402157cd177541db79bc24e2b5f47bbc2239ad1f50f0951",
+      "chobby-macos-notch.patch": "974f5cb26fb85dd71a71cdebd039e024f99f60a896df04fcba38402c53719683"
     }
   },
   "infrastructure": {

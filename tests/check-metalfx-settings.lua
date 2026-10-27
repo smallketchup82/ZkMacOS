@@ -42,17 +42,19 @@ local _, names = dofile("external/chobby/LuaMenu/configs/gameConfig/zk/settingsM
 local configuration = setmetatable({
 	gameConfig = {settingsNames = names}, noNaiveConfigOverride = {settingsMenuValues = true},
 	channels = {}, game_settings = {}, settingsMenuValues = {},
-	listeners = {}, configParamTypes = {MacRetinaMode = "int", MacMetalFXSpatial = "bool"},
+	listeners = {}, configParamTypes = {MacRetinaMode = "int", MacMetalFXSpatial = "bool", MacNotchFullscreen = "bool"},
 }, {__index = Configuration})
 WG.Chobby.Configuration = configuration
 
 for _, enabled in ipairs({1, 0}) do
 	config.MacMetalFXSpatial = enabled
+	config.MacNotchFullscreen = enabled
 	configuration:SetConfigData({
-		game_settings = {MacMetalFXSpatial = 1 - enabled},
-		settingsMenuValues = {MacMetalFXSpatial = enabled == 1 and "Off" or "On"},
+		game_settings = {MacMetalFXSpatial = 1 - enabled, MacNotchFullscreen = 1 - enabled},
+		settingsMenuValues = {MacMetalFXSpatial = enabled == 1 and "Off" or "On", MacNotchFullscreen = enabled == 1 and "Off" or "On"},
 	})
 	assert(config.MacMetalFXSpatial == enabled)
+	assert(config.MacNotchFullscreen == enabled and configuration.game_settings.MacNotchFullscreen == enabled)
 	assert(configuration.game_settings.MacMetalFXSpatial == enabled)
 	assert(configuration.settingsMenuValues.MacMetalFXSpatial == (enabled == 1 and "On" or "Off"))
 end
