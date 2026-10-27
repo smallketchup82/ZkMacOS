@@ -37,7 +37,7 @@ class CaskChecks(unittest.TestCase):
         self.assertIn('/releases/download/202610.27.0/' + updater.ASSET, cask)
         self.assertIn('depends_on arch: :arm64', cask)
         self.assertIn('depends_on macos: :tahoe', cask)
-        self.assertNotIn('auto_updates', cask)
+        self.assertIn('auto_updates true', cask)
         self.assertNotIn('zap ', cask)
 
     def test_new_version_advances_but_older_or_identical_does_not(self):

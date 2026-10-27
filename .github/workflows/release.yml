@@ -24,6 +24,7 @@ jobs:
     outputs:
       tag: ${{ steps.version.outputs.tag }}
     env:
+      SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
       BUILD_JOBS: '2'
       ZKMACOS_BUILD_NUMBER: ${{ github.run_number }}
       HOMEBREW_NO_AUTO_UPDATE: '1'
@@ -35,6 +36,12 @@ jobs:
       CCACHE_COMPILERCHECK: content
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Require Sparkle signing configuration
+        env:
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+        run: |
+          test -n "$SPARKLE_PUBLIC_ED_KEY" || { echo 'Set the SPARKLE_PUBLIC_ED_KEY repository variable.' >&2; exit 1; }
+          test -n "$SPARKLE_PRIVATE_ED_KEY" || { echo 'Set the SPARKLE_PRIVATE_ED_KEY repository secret.' >&2; exit 1; }
       - name: Choose the next daily CalVer
         id: version
         env:
@@ -112,10 +119,17 @@ jobs:
           luajit tests/check-metalfx-settings.lua
           uv run --no-project --python python3 python tests/check-cask.py
           uv run --no-project --python python3 python tests/check-release-version.py
-          swiftc -D UPDATE_CHECK_TESTS -framework AppKit app/main.swift tests/check-updates.swift -o build/check-updates
+          swiftc -D UPDATE_CHECK_TESTS -framework AppKit -F .cache/sparkle-2.10.1 -framework Sparkle \
+            -Xlinker -rpath -Xlinker "$PWD/.cache/sparkle-2.10.1" \
+            app/main.swift tests/check-updates.swift -o build/check-updates
           build/check-updates
+          uv run --no-project --python python3 --with cryptography==46.0.3 python tests/check-appcast.py
       - name: Build the styled DMG without Finder automation
         run: ./scripts/build-dmg.sh
+      - name: Sign the DMG and generate the signed Sparkle feed
+        env:
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+        run: uv run --python python3 scripts/generate-appcast.py
       - name: Verify and stage release metadata
         run: |
           (cd dist && shasum -a 256 -c Zero-K-macOS-arm64.dmg.sha256)
@@ -139,6 +153,7 @@ jobs:
             dist/Zero-K-macOS-arm64.dmg
             dist/Zero-K-macOS-arm64.dmg.sha256
             dist/*.json
+            dist/appcast.xml
       - name: Publish the release with completed artifacts
         env:
           GH_TOKEN: ${{ github.token }}
@@ -152,7 +167,7 @@ jobs:
           printf '\nSource commit: %s\n' "$GITHUB_SHA" >> build/release-notes.md
           gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "ZkMacOS $RELEASE_TAG" --draft --generate-notes --notes-file build/release-notes.md \
-            dist/Zero-K-macOS-arm64.dmg dist/Zero-K-macOS-arm64.dmg.sha256
+            dist/Zero-K-macOS-arm64.dmg dist/Zero-K-macOS-arm64.dmg.sha256 dist/appcast.xml
           gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
           printf '\n[Download release](https://github.com/%s/releases/tag/%s)\n' "$GITHUB_REPOSITORY" "$RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"
       - name: Save compiler results even after a later failure

@@ -59,16 +59,21 @@ your older Homebrew version does not provide `brew trust`, omit that line.
 Open **Zero-K.app** from Applications. You may still need to approve the app
 in macOS using the instructions below.
 
-To update, quit Zero-K, then run:
+Sparkle provides in-app updates for Homebrew installations too. The cask is
+marked `auto_updates true`, so Homebrew recognizes that the app can update
+itself. To explicitly update through Homebrew instead, quit Zero-K, then run:
 
 ```sh
 brew update
 brew upgrade --cask smallketchup82/zkmacos/zkmacos
 ```
 
-The release workflow updates the tap's version and checksum automatically;
-Homebrew then downloads and replaces the app when you upgrade. It does not
-silently update a running game. Your Application Support data is preserved.
+The release workflow updates the tap's version and checksum automatically.
+Homebrew upgrades and Sparkle both replace the app while preserving Application
+Support. Sparkle does not update Homebrew's installation receipt; an explicit
+Homebrew upgrade may therefore reinstall a version Sparkle already installed.
+Quit the game before running Homebrew upgrades, and let an active Sparkle
+installation finish before using Homebrew.
 
 If you installed manually before, move the old `Zero-K.app` out of Applications
 before installing the cask, so Homebrew can manage its own copy. Keep your
@@ -113,19 +118,24 @@ xattr -dr com.apple.quarantine "/Applications/Zero-K.app"
 
 See [distribution and macOS approval](docs/DISTRIBUTION.md) for more detail.
 
-### Updating a manual installation
+### In-app updates
 
-At launch, the app checks GitHub for a newer published release in the
-background. If one is available, a native macOS dialog shows the installed
-and available versions, package-manager update instructions, and an **Open
-GitHub Releases** button. **Later** dismisses it until the next launch.
-Offline or failed checks are silent and do not delay startup. The app checks
-once per launch and does not download or install updates itself.
+Sparkle checks for stable releases in the background and provides a native
+update window to download, verify, and install them. Use the **ZK** menu in
+the macOS menu bar for **Check for Updates…** or to toggle **Check Automatically**.
+Automatic checks are enabled by default; unattended installation is off by
+default. Checks follow Sparkle's schedule rather than running on every launch.
 
-Quit Zero-K completely, then replace the app in Applications with the new one
-from the DMG. Your downloaded content and saved preferences remain in
-Application Support. New defaults apply to fresh profiles; updating the app
-does not overwrite your existing choices.
+If an update is ready while you are playing, finish your match and quit Zero-K
+normally. Installation and relaunch wait until the helper and engine exit;
+the updater does not forcibly stop a match. Failed background checks do not
+block startup. Both the signed update feed and the DMG are hosted as GitHub
+release assets; no separate server or GitHub Pages site is needed.
+
+Existing versions with the old GitHub update dialog need one manual or
+Homebrew upgrade to receive Sparkle. You can still quit the game and replace
+the app from a downloaded DMG. Settings, downloaded content, and saves remain
+in Application Support with either update method.
 
 ### macOS Game Mode
 
@@ -336,6 +346,9 @@ brew bundle
 The build fetches the fork checkouts and dependency inputs, builds the renderer,
 engine, AI and launcher, and packages **`dist/Zero-K.app`**. It also audits the
 bundle's native architecture, library dependencies, and ad-hoc signatures.
+Sparkle's signed universal framework is preserved; the game and launcher remain
+ARM64. Local builds without `SPARKLE_PUBLIC_ED_KEY` omit updater configuration
+and do not check for updates. See the signing setup below to enable it.
 Build logs are under `build/logs/`. Close the running app before replacing it
 with a new build.
 
@@ -360,6 +373,11 @@ luajit tests/check-settings.lua
 luajit tests/check-display-sync.lua
 luajit tests/check-trackpad-settings.lua
 uv run --python python3 tests/check-cask.py
+uv run --no-project --python python3 --with cryptography==46.0.3 python tests/check-appcast.py
+swiftc -D UPDATE_CHECK_TESTS -framework AppKit -F .cache/sparkle-2.10.1 -framework Sparkle \
+  -Xlinker -rpath -Xlinker "$PWD/.cache/sparkle-2.10.1" \
+  app/main.swift tests/check-updates.swift -o build/check-updates
+build/check-updates
 uv run --python python3 scripts/audit-app.py
 uv run --python python3 scripts/smoke-app.py --seconds 90
 uv run --python python3 scripts/smoke-download.py
@@ -385,14 +403,39 @@ and where its changes now live.
 
 ## Package a release
 
+### One-time Sparkle signing setup
+
+Sparkle uses its own Ed25519 signing key, independently of Apple Developer ID.
+After dependencies have been fetched, generate a key in your macOS Keychain:
+
+```sh
+.cache/sparkle-2.10.1/bin/generate_keys --account zkmacos
+```
+
+In this GitHub repository's **Settings → Secrets and variables → Actions**, set:
+
+- Repository variable **`SPARKLE_PUBLIC_ED_KEY`** to the public key printed by
+  the tool. Local update-enabled builds need the same environment variable.
+- Repository secret **`SPARKLE_PRIVATE_ED_KEY`** to the contents exported by
+  `generate_keys --account zkmacos -x /path/to/private-key-file`. Export outside
+  the checkout, upload it as a secret, then remove the temporary export.
+
+Keep a secure backup of this key. Without Developer ID signing, losing the
+private key prevents authenticating future updates for existing installations.
+Do not generate a new key for each release. No private key belongs in Git or
+release assets. CI fails before building if either setting is missing and
+checks that the signing key matches the public key embedded in the app before
+publishing. This does not provide Apple signing or notarization; initial
+macOS approval still applies.
+
 ### Automatic release from GitHub Actions
 
 Open **Actions → Build and publish macOS release → Run workflow**, select
-`main`, and click **Run workflow**. No version input or signing secrets are
-needed. The workflow builds the pinned sources on an Apple Silicon macOS 26
-runner, runs the settings checks and app audit, creates the styled DMG without
+`main`, and click **Run workflow** after configuring the Sparkle keys above.
+No version input is needed. The workflow builds the pinned sources on an
+Apple Silicon macOS 26 runner, runs the settings checks and app audit, creates the styled DMG without
 Finder automation, and publishes a GitHub release with the DMG, SHA256 checksum,
-source locks, dependency inventory, and audit metadata. It then calls the
+signed `appcast.xml`, source locks, dependency inventory, and audit metadata. It then calls the
 Homebrew cask workflow to update the tap.
 
 CalVer is automatic: `YYYYMM.DD.PATCH` uses the date in **America/Toronto** when
@@ -416,7 +459,10 @@ known limitations in release notes current.
 
 1. Commit and push the matching fork changes, then update `sources.lock.json`.
    Use clean checkouts matching those pins for a release.
-2. Build and audit the app:
+2. Set `ZKMACOS_VERSION` to the intended CalVer tag and `ZKMACOS_BUILD_NUMBER`
+   to a number higher than the last published app's `CFBundleVersion` (CI uses
+   its increasing workflow run number). Set `SPARKLE_PUBLIC_ED_KEY` to the
+   production public key, then build and audit the app:
 
    ```sh
    ./scripts/build-app.sh
@@ -442,10 +488,23 @@ known limitations in release notes current.
    dist/Zero-K-macOS-arm64.dmg.sha256
    ```
 
-5. Create a CalVer release tag using `YYYYMM.DD.PATCH` (for example
+5. Set `SPARKLE_PRIVATE_ED_KEY` to the private key export when signing, then
+   generate the feed **after** the final DMG is built:
+
+   ```sh
+   uv run --python python3 scripts/generate-appcast.py
+   ```
+
+   This validates the key pair, signs the DMG, and signs `dist/appcast.xml`.
+   Never modify the DMG or feed afterward without regenerating signatures.
+   Upload `appcast.xml` alongside the DMG and checksum before publishing.
+   Sparkle reads it from this stable URL:
+   `https://github.com/smallketchup82/ZkMacOS/releases/latest/download/appcast.xml`.
+
+6. Create a CalVer release tag using `YYYYMM.DD.PATCH` (for example
    `202610.27.0`). Use a two-digit day, start the patch at `0`, and increment it
    for additional releases on the same day. Reset it to `0` on a new date.
-   Attach both files to a **draft** GitHub release before publishing it.
+   Attach all three files to a **draft** GitHub release before publishing it.
    Publish it as a non-prerelease to update the Homebrew channel, with the
    matching source revisions, patches, build instructions, and third-party
    notices. The app
@@ -536,6 +595,7 @@ vendor full copies of these projects.
   windowing/input, audio, image loading, and fonts, along with their dependencies.
 - **GCC, CMake, Ninja, Meson, LLVM, libclc, Python/uv, Swift/AppKit, and Homebrew:**
   compilation, dependency preparation, native bootstrap, and packaging tools.
+- **[Sparkle](https://sparkle-project.org/):** native in-app updates; MIT license.
 - **[create-dmg](https://github.com/create-dmg/create-dmg):** DMG creation and
   Finder layout. A build-local compatibility patch prevents Finder from
   resetting the layout on macOS 27; the installed tool is left unchanged.

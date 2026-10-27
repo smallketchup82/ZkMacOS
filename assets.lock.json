@@ -29,5 +29,12 @@
     "extract": null,
     "kind": "file",
     "sha256": "ff6c01fb68c4b885e13400c50298ee6a8bfcf3ac5995cf3039565f6814095226"
+  },
+  "sparkle": {
+    "url": "https://github.com/sparkle-project/Sparkle/releases/download/2.10.1/Sparkle-2.10.1.tar.xz",
+    "file": "Sparkle-2.10.1.tar.xz",
+    "extract": "sparkle-2.10.1",
+    "kind": "tar-root",
+    "sha256": "1a856d2a9edb8e628de88121d7be04cf0e2167f8641650b78fca00b14244cf27"
   }
 }
