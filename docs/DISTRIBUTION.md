@@ -25,9 +25,17 @@ xattr -dr com.apple.quarantine "/Applications/Zero-K.app"
 Do not disable Gatekeeper globally. The build does not change security settings.
 
 Create a disk image with `./scripts/build-dmg.sh` after building the app. It
-contains `Zero-K.app` and an Applications shortcut for drag-to-install. The
-read-only DMG includes only the audited app,
-not Application Support, source worktrees, logs or developer caches. Do not
+uses `create-dmg` to arrange `Zero-K.app` and an Applications shortcut with an
+install arrow. `app/dmg-background.swift` generates the Retina background.
+Building the image requires a logged-in desktop session and Finder automation
+permission when prompted. This does not rebuild the engine. The build applies
+`patches/create-dmg-finder-timing.patch` to a temporary copy of the tool
+(tested with create-dmg 1.3.0) so Finder finishes applying the view and saves
+it without reopening into tab defaults on macOS 27. The installed Homebrew
+tool is unchanged.
+
+The read-only DMG contains the audited app and installer artwork, without
+Application Support, source worktrees, logs or developer caches. Do not
 copy personal data into the app before sharing it. The same app should work
 after being renamed or moved.
 

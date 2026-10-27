@@ -1,0 +1,20 @@
+--- a/support/template.applescript
++++ b/support/template.applescript
+@@ -21,6 +21,7 @@
+ 				REPOSITION_HIDDEN_FILES_CLAUSE
+ 			end tell
+ 
++			delay 2
+ 			set opts to the icon view options of container window
+ 			tell opts
+ 				set icon size to ICON_SIZE
+@@ -38,8 +39,7 @@
+ 			-- Application and QL Link Clauses
+ 			APPLICATION_CLAUSE
+ 			QL_CLAUSE
+-			close
+-			open
++			delay 2
+ 			-- Force saving of the size
+ 			delay 1
+ 

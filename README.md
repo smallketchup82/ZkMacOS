@@ -44,7 +44,10 @@ Create the drag-to-install disk image separately:
 ```
 
 The result is `dist/Zero-K-macOS-arm64.dmg` with the app and an Applications
-shortcut. The DMG does not contain development files or user data.
+shortcut, an install arrow, and a Retina background. The script uses
+[create-dmg](https://github.com/create-dmg/create-dmg), installed by the Brewfile,
+to save the Finder layout. Run it in a logged-in macOS desktop session and allow
+Finder automation if macOS asks. The DMG does not contain development files or user data.
 
 ## Repository layout
 
