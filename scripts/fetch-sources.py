@@ -1,4 +1,4 @@
-"""Check out pinned forks and apply the version-specific CircuitAI fix."""
+"""Check out pinned forks and apply checksum-verified source patches."""
 from pathlib import Path
 import json
 import hashlib
@@ -17,6 +17,14 @@ for name, item in sources.items():
         print(f'{name}: using local revision {actual}; release pin is {item["revision"]}')
     if (destination / '.gitmodules').exists():
         subprocess.run(['git', '-C', str(destination), 'submodule', 'update', '--init', '--recursive'], check=True)
+    for filename, expected_hash in item.get('patches', {}).items():
+        patch = root / 'patches' / filename
+        if hashlib.sha256(patch.read_bytes()).hexdigest() != expected_hash:
+            raise RuntimeError(f'{filename} differs from the lock file')
+        reverse = subprocess.run(['git', '-C', str(destination), 'apply', '--reverse', '--check', str(patch)], capture_output=True)
+        if reverse.returncode:
+            subprocess.run(['git', '-C', str(destination), 'apply', '--check', str(patch)], check=True)
+            subprocess.run(['git', '-C', str(destination), 'apply', '--whitespace=nowarn', str(patch)], check=True)
 
 circuit = root / 'external/recoil/AI/Skirmish/CircuitAI'
 patch = root / 'patches/circuitai-apple-arm64.patch'

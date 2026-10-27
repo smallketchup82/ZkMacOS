@@ -212,6 +212,26 @@ The setting is shared between the lobby and game.
 **Quit Zero-K completely and reopen it after changing Retina mode.** Starting
 another battle is not enough.
 
+Toggle **MetalFX spatial upscaling** below the Retina setting in the lobby's
+Graphics settings, or in **in-game Settings → Graphics → Display**. It applies
+immediately to the lower-resolution world in **Retina text and UI** mode on a
+Retina display; text and UI still draw at native resolution. Standard and Full
+Retina modes do not use it. If MetalFX is unavailable or fails, the engine logs
+the reason and uses the existing bilinear scaling.
+
+MetalFX is off by default. The current Mesa bridge needs extra readback and
+upload transfers to upscale before drawing UI, so enabling it may reduce FPS.
+To configure it manually, quit Zero-K and set these values in
+`~/Library/Application Support/Zero-K/springsettings.cfg`:
+
+```ini
+MacRetinaMode = 1
+MacMetalFXSpatial = 1
+```
+
+Set `MacMetalFXSpatial = 0` to disable it. The lobby reads this shared engine
+setting, so an older saved lobby selection does not override manual edits.
+
 Toggle **Show native FPS counter** in the same in-game Display menu, or use
 `/fps`. It displays FPS, average frame interval, and the current Retina mode,
 which helps compare UI-only and Full Retina performance.

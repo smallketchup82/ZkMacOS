@@ -1,0 +1,297 @@
+diff --git a/rts/Rendering/GL/MacEGLBridge.cpp b/rts/Rendering/GL/MacEGLBridge.cpp
+index a843a7808..a36b54644 100644
+--- a/rts/Rendering/GL/MacEGLBridge.cpp
++++ b/rts/Rendering/GL/MacEGLBridge.cpp
+@@ -12,6 +12,7 @@
+ #include <string>
+ #include <mutex>
+ #include <cmath>
++#include <vector>
+ 
+ #include <SDL.h>
+ 
+@@ -22,6 +23,7 @@
+ #include "System/Config/ConfigHandler.h"
+ 
+ CONFIG(int, MacRetinaMode).defaultValue(1).minimumValue(0).maximumValue(2).description("macOS Retina mode: 0=standard, 1=Retina text and UI, 2=Retina text, UI and main game scene. Requires restart.");
++CONFIG(bool, MacMetalFXSpatial).defaultValue(false).description("Use MetalFX spatial upscaling for the lower-resolution world in Retina text and UI mode. Applies immediately; UI stays native resolution. Adds GPU transfers with the current Mesa bridge.");
+ 
+ // minimal EGL declarations; libEGL is dlopen()ed so there is no build-time dependency on Mesa
+ namespace {
+@@ -326,6 +328,10 @@ namespace Retina {
+ 	int logicalX = 1, logicalY = 1;
+ 	float scaleX = 1.0f, scaleY = 1.0f;
+ 	bool drawingScene = false;
++	GLuint upscaleFBO = 0, upscaleColor = 0;
++	int upscaleX = 0, upscaleY = 0;
++	std::vector<uint8_t> scenePixels;
++	bool metalFXFailed = false;
+ 
+ 	bool HighDPI() { return retinaEnabled && (scaleX > 1.0f || scaleY > 1.0f); }
+ 
+@@ -385,6 +391,88 @@ namespace Retina {
+ 		sceneX = sceneY = 0;
+ 	}
+ 
++	void DestroyUpscaler() {
++		if (upscaleFBO != 0) glDeleteFramebuffers(1, &upscaleFBO);
++		if (upscaleColor != 0) glDeleteTextures(1, &upscaleColor);
++		upscaleFBO = upscaleColor = 0;
++		upscaleX = upscaleY = 0;
++		scenePixels.clear();
++		metalFXFailed = false;
++		MacMetalFX::Destroy();
++	}
++
++	// Called with the scene bound for reading, default framebuffer for drawing,
++	// and scissor disabled. Keep the Metal boundary here so UI is never upscaled.
++	bool UpscaleScene() {
++		if (!configHandler->GetBool("MacMetalFXSpatial")) {
++			metalFXFailed = false;
++			return false;
++		}
++		if (metalFXFailed)
++			return false;
++
++		// Widgets may leave PBOs and pixel-store offsets bound. Neither transfer
++		// may inherit those, and all bindings must be restored before UI draws.
++		constexpr GLenum packNames[] = {GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH, GL_PACK_SKIP_PIXELS, GL_PACK_SKIP_ROWS};
++		constexpr GLenum unpackNames[] = {GL_UNPACK_ALIGNMENT, GL_UNPACK_ROW_LENGTH, GL_UNPACK_SKIP_PIXELS, GL_UNPACK_SKIP_ROWS};
++		GLint pack[4], unpack[4], packBuffer = 0, unpackBuffer = 0, previousTexture = 0;
++		getIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &packBuffer);
++		getIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &unpackBuffer);
++		getIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
++		for (int i = 0; i < 4; ++i) {
++			getIntegerv(packNames[i], &pack[i]);
++			getIntegerv(unpackNames[i], &unpack[i]);
++			glPixelStorei(packNames[i], i == 0 ? 4 : 0);
++			glPixelStorei(unpackNames[i], i == 0 ? 4 : 0);
++		}
++		glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
++		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
++		scenePixels.resize(size_t(logicalX) * logicalY * 4);
++		readPixels(0, 0, logicalX, logicalY, GL_RGBA, GL_UNSIGNED_BYTE, scenePixels.data());
++		const void* output = nullptr;
++		int outputRowLength = 0;
++		bool success = MacMetalFX::Upscale(scenePixels.data(), logicalX, logicalY, surfSizeX, surfSizeY, output, outputRowLength);
++		if (success) {
++			if (upscaleFBO == 0) {
++				glGenFramebuffers(1, &upscaleFBO);
++				glGenTextures(1, &upscaleColor);
++			}
++			glBindTexture(GL_TEXTURE_2D, upscaleColor);
++			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
++			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
++			if (upscaleX != surfSizeX || upscaleY != surfSizeY) {
++				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, surfSizeX, surfSizeY, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
++				bindFramebuffer(GL_READ_FRAMEBUFFER, upscaleFBO);
++				glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, upscaleColor, 0);
++				success = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
++				if (success) {
++					upscaleX = surfSizeX; upscaleY = surfSizeY;
++					LOG("[MacMetalFX] spatial upscale %dx%d -> %dx%d; native-resolution UI", logicalX, logicalY, surfSizeX, surfSizeY);
++				}
++			}
++			if (success) {
++				glPixelStorei(GL_UNPACK_ROW_LENGTH, outputRowLength);
++				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surfSizeX, surfSizeY, GL_RGBA, GL_UNSIGNED_BYTE, output);
++				bindFramebuffer(GL_READ_FRAMEBUFFER, upscaleFBO);
++				blitFramebuffer(0, 0, surfSizeX, surfSizeY, 0, 0, surfSizeX, surfSizeY, GL_COLOR_BUFFER_BIT, GL_NEAREST);
++			}
++		}
++		bindFramebuffer(GL_READ_FRAMEBUFFER, sceneFBO);
++		glBindTexture(GL_TEXTURE_2D, previousTexture);
++		glBindBuffer(GL_PIXEL_PACK_BUFFER, packBuffer);
++		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, unpackBuffer);
++		for (int i = 0; i < 4; ++i) {
++			glPixelStorei(packNames[i], pack[i]);
++			glPixelStorei(unpackNames[i], unpack[i]);
++		}
++		if (!success) {
++			metalFXFailed = true;
++			LOG_L(L_WARNING, "[MacMetalFX] %s; using bilinear scaling (toggle off/on to retry)", MacMetalFX::GetError());
++			MacMetalFX::Destroy();
++		}
++		return success;
++	}
++
+ 	bool EnsureScene() {
+ 		if (sceneFBO != 0 && sceneX == logicalX && sceneY == logicalY)
+ 			return true;
+@@ -521,7 +609,8 @@ void MacEGLBridge::BeginUI()
+ 		glDisable(GL_SCISSOR_TEST);
+ 		Retina::bindFramebuffer(GL_READ_FRAMEBUFFER, Retina::sceneFBO);
+ 		Retina::bindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+-		Retina::blitFramebuffer(0, 0, Retina::logicalX, Retina::logicalY, 0, 0, surfSizeX, surfSizeY, GL_COLOR_BUFFER_BIT, GL_LINEAR);
++		if (!Retina::UpscaleScene())
++			Retina::blitFramebuffer(0, 0, Retina::logicalX, Retina::logicalY, 0, 0, surfSizeX, surfSizeY, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+ 		Retina::blitFramebuffer(0, 0, Retina::logicalX, Retina::logicalY, 0, 0, surfSizeX, surfSizeY, GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT, GL_NEAREST);
+ 		if (clipped) glEnable(GL_SCISSOR_TEST);
+ 	}
+@@ -625,6 +714,7 @@ void MacEGLBridge::DestroyContext()
+ 	egl.MakeCurrent(display, surface, surface, context);
+ 	Retina::drawingScene = false;
+ 	Retina::DestroyScene();
++	Retina::DestroyUpscaler();
+ 	for (unsigned int i = 0; i < NUM_PBOS; i++) {
+ 		if (fences[i] != nullptr)
+ 			glDeleteSync(fences[i]);
+diff --git a/rts/Rendering/GL/MacEGLBridge.h b/rts/Rendering/GL/MacEGLBridge.h
+index 55bee80dc..c83896dcb 100644
+--- a/rts/Rendering/GL/MacEGLBridge.h
++++ b/rts/Rendering/GL/MacEGLBridge.h
+@@ -32,4 +32,11 @@ namespace MacEGLBridge {
+ 	void ScaleSceneSize(int& width, int& height);
+ 	void CopyToTexturePixels(unsigned int target, int level, int xoff, int yoff, int x, int y, int width, int height);
+ }
++
++// Objective-C++ boundary: the engine uses GCC, MetalFX uses Apple's compiler.
++namespace MacMetalFX {
++	bool Upscale(const void* rgba, int width, int height, int outputWidth, int outputHeight, const void*& output, int& outputRowLength);
++	const char* GetError();
++	void Destroy();
++}
+ #endif
+diff --git a/rts/builds/legacy/CMakeLists.txt b/rts/builds/legacy/CMakeLists.txt
+index 2c39aaae9..d776cd160 100644
+--- a/rts/builds/legacy/CMakeLists.txt
++++ b/rts/builds/legacy/CMakeLists.txt
+@@ -86,6 +86,18 @@ include_directories(${engineIncludes})
+ 
+ ### Build the executable
+ add_executable(engine-legacy ${EXE_FLAGS} ${engineSources} ${ENGINE_ICON} ${engineHeaders})
++if (APPLE AND MAC_EGL_ZINK)
++	# Keep GCC for synchronized engine code; compile only the Metal API boundary with Clang.
++	set(metalfx_source "${ENGINE_SRC_ROOT_DIR}/Rendering/GL/MacMetalFX.mm")
++	set(metalfx_object "${CMAKE_CURRENT_BINARY_DIR}/MacMetalFX.o")
++	add_custom_command(OUTPUT "${metalfx_object}"
++		COMMAND xcrun clang++ -std=c++17 -fobjc-arc -arch arm64 -mmacosx-version-min=13.0
++			-DMAC_EGL_ZINK -c "${metalfx_source}" -o "${metalfx_object}"
++		DEPENDS "${metalfx_source}" "${ENGINE_SRC_ROOT_DIR}/Rendering/GL/MacEGLBridge.h"
++		VERBATIM)
++	target_sources(engine-legacy PRIVATE "${metalfx_object}")
++	target_link_libraries(engine-legacy "-framework Metal" "-framework MetalFX")
++endif ()
+ target_link_libraries(engine-legacy ${engineLibraries} Game)
+ 
+ # Export symbols for plugin access (replaces CMP0065 OLD behavior)
+diff --git a/rts/Rendering/GL/MacMetalFX.mm b/rts/Rendering/GL/MacMetalFX.mm
+new file mode 100644
+index 000000000..e234c23c2
+--- /dev/null
++++ b/rts/Rendering/GL/MacMetalFX.mm
+@@ -0,0 +1,114 @@
++/* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
++// MetalFX spatial integration assisted by OpenAI Codex.
++
++#include "MacEGLBridge.h"
++
++#import <Metal/Metal.h>
++#import <MetalFX/MetalFX.h>
++
++namespace MacMetalFX {
++namespace {
++	id<MTLDevice> device;
++	id<MTLCommandQueue> queue;
++	id<MTLFXSpatialScaler> scaler;
++	id<MTLTexture> inputTexture;
++	id<MTLTexture> outputTexture;
++	id<MTLBuffer> readback;
++	NSString* errorMessage;
++}
++
++const char* GetError()
++{
++	return errorMessage ? errorMessage.UTF8String : "MetalFX resource allocation failed";
++}
++
++void Destroy()
++{
++	scaler = nil;
++	inputTexture = nil;
++	outputTexture = nil;
++	readback = nil;
++	queue = nil;
++	device = nil;
++	errorMessage = nil;
++}
++
++bool Upscale(const void* rgba, int width, int height, int outputWidth, int outputHeight, const void*& output, int& outputRowLength)
++{
++	output = nullptr;
++	if (!rgba || width <= 0 || height <= 0 || outputWidth < width || outputHeight < height)
++		return false;
++
++	@autoreleasepool {
++		if (!device) {
++			device = MTLCreateSystemDefaultDevice();
++			if (!device || ![MTLFXSpatialScalerDescriptor supportsDevice:device]) {
++				errorMessage = @"spatial upscaling is unsupported on this GPU";
++				return false;
++			}
++			queue = [device newCommandQueue];
++		}
++		if (!queue)
++			return false;
++
++		if (!scaler || scaler.inputWidth != width || scaler.inputHeight != height ||
++			scaler.outputWidth != outputWidth || scaler.outputHeight != outputHeight) {
++			MTLFXSpatialScalerDescriptor* descriptor = [MTLFXSpatialScalerDescriptor new];
++			descriptor.inputWidth = width;
++			descriptor.inputHeight = height;
++			descriptor.outputWidth = outputWidth;
++			descriptor.outputHeight = outputHeight;
++			descriptor.colorTextureFormat = MTLPixelFormatRGBA8Unorm;
++			descriptor.outputTextureFormat = MTLPixelFormatRGBA8Unorm;
++			// The legacy scene is already display-referred; don't apply gamma again.
++			descriptor.colorProcessingMode = MTLFXSpatialScalerColorProcessingModePerceptual;
++			scaler = [descriptor newSpatialScalerWithDevice:device];
++			if (!scaler)
++				return false;
++
++			MTLTextureDescriptor* texture = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:
++				MTLPixelFormatRGBA8Unorm width:width height:height mipmapped:NO];
++			texture.storageMode = MTLStorageModeShared;
++			texture.usage = scaler.colorTextureUsage;
++			inputTexture = [device newTextureWithDescriptor:texture];
++			texture.width = outputWidth;
++			texture.height = outputHeight;
++			texture.storageMode = MTLStorageModePrivate;
++			texture.usage = scaler.outputTextureUsage;
++			outputTexture = [device newTextureWithDescriptor:texture];
++			const NSUInteger rowBytes = (NSUInteger(outputWidth) * 4 + 255) & ~NSUInteger(255);
++			readback = [device newBufferWithLength:rowBytes * outputHeight options:MTLResourceStorageModeShared];
++		}
++		if (!inputTexture || !outputTexture || !readback)
++			return false;
++
++		[inputTexture replaceRegion:MTLRegionMake2D(0, 0, width, height) mipmapLevel:0 withBytes:rgba bytesPerRow:NSUInteger(width) * 4];
++		scaler.colorTexture = inputTexture;
++		scaler.outputTexture = outputTexture;
++		scaler.inputContentWidth = width;
++		scaler.inputContentHeight = height;
++		id<MTLCommandBuffer> commands = [queue commandBuffer];
++		if (!commands)
++			return false;
++		[scaler encodeToCommandBuffer:commands];
++		id<MTLBlitCommandEncoder> blit = [commands blitCommandEncoder];
++		if (!blit)
++			return false;
++		const NSUInteger rowBytes = (NSUInteger(outputWidth) * 4 + 255) & ~NSUInteger(255);
++		[blit copyFromTexture:outputTexture sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0)
++			sourceSize:MTLSizeMake(outputWidth, outputHeight, 1) toBuffer:readback destinationOffset:0
++			destinationBytesPerRow:rowBytes destinationBytesPerImage:rowBytes * outputHeight];
++		[blit endEncoding];
++		[commands commit];
++		// UI continues in Mesa GL, so the upscaled world must return before its draw.
++		[commands waitUntilCompleted];
++		if (commands.status == MTLCommandBufferStatusError) {
++			errorMessage = commands.error.localizedDescription;
++			return false;
++		}
++		output = readback.contents;
++		outputRowLength = rowBytes / 4;
++		return true;
++	}
++}
++}
