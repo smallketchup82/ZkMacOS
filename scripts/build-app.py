@@ -9,6 +9,7 @@ import subprocess
 import tarfile
 import tempfile
 import hashlib
+import base64
 from zipfile import ZipFile
 
 root = Path(__file__).resolve().parents[1]
@@ -17,6 +18,10 @@ libraries = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(libraries)
 build = root / 'build'
 dist = root / 'dist'
+# Local builds without a key can run, but never start an unauthenticated updater.
+public_key = os.environ.get('SPARKLE_PUBLIC_ED_KEY', '').strip()
+if public_key and len(base64.b64decode(public_key, validate=True)) != 32:
+    raise ValueError('SPARKLE_PUBLIC_ED_KEY must be a base64-encoded 32-byte public key.')
 dist.mkdir(exist_ok=True)
 running = subprocess.check_output(['ps', '-axo', 'comm='], text=True)
 if any(line.startswith(str(dist / 'Zero-K.app/Contents') + '/') for line in running.splitlines()):
@@ -84,7 +89,13 @@ for file in (build / 'client-arm64').iterdir():
         helper_roots.append((file, resources / 'client' / file.name))
 native_files.update(libraries.bundle(helper_roots, resources / 'client', 'arm64'))
 
-subprocess.run(['swiftc', '-O', '-module-cache-path', str(build / 'swift-cache'), '-target', 'arm64-apple-macos26.0', '-framework', 'AppKit',
+# Preserve Sparkle's signed universal binaries, framework layout and symlinks.
+# Do not pass these binaries through the engine's dylib relocation/thinning code.
+sparkle = root / '.cache/sparkle-2.10.1'
+shutil.copytree(sparkle / 'Sparkle.framework', frameworks / 'Sparkle.framework', symlinks=True)
+copy(sparkle / 'LICENSE', resources / 'licenses/Sparkle-MIT.txt')
+subprocess.run(['swiftc', '-O', '-module-cache-path', str(build / 'swift-cache'), '-target', 'arm64-apple-macos26.0', '-framework', 'AppKit', '-F', str(frameworks), '-framework', 'Sparkle',
+                '-Xlinker', '-rpath', '-Xlinker', '@loader_path/../Frameworks',
                 str(root / 'app/main.swift'), '-o', str(contents / 'MacOS/Zero-K')], check=True)
 iconset = build / 'Zero-K.iconset'
 iconset.mkdir(exist_ok=True)
@@ -103,6 +114,11 @@ info = {'CFBundleExecutable': 'Zero-K', 'CFBundleIdentifier': 'org.zerok.macos',
         'LSApplicationCategoryType': 'public.app-category.strategy-games', 'LSSupportsGameMode': True,
         'LSArchitecturePriority': ['arm64'], 'LSUIElement': True, 'CFBundleIconFile': 'Zero-K.icns',
         'NSHumanReadableCopyright': 'Zero-K contributors; see Resources/licenses'}
+if public_key:
+    info.update({'SUFeedURL': 'https://github.com/smallketchup82/ZkMacOS/releases/latest/download/appcast.xml',
+                 'SUPublicEDKey': public_key, 'SUEnableAutomaticChecks': True,
+                 'SUAutomaticallyUpdate': False, 'SUVerifyUpdateBeforeExtraction': True,
+                 'SURequireSignedFeed': True})
 (contents / 'Info.plist').write_bytes(plistlib.dumps(info))
 for source, name in ((root / 'LICENSE', 'ZkMacOS-GPL.txt'),
                     (engine_source / 'LICENSE.html', 'Recoil-GPL.html'),

@@ -16,7 +16,26 @@ tap. Publishing a non-prerelease GitHub release with the DMG and its checksum
 triggers `.github/workflows/update-homebrew.yml`, which verifies the download
 and commits a versioned cask. See the README for installation and upgrade
 commands. Homebrew upgrades replace the app and preserve
-Application Support; there is no silent in-app updater.
+Application Support. Sparkle provides in-app updates for both installation
+methods. The generated cask declares `auto_updates true`; Homebrew retains its
+own receipt and an explicit upgrade may reinstall an already self-updated app.
+Do not run Homebrew upgrades during a game or an active Sparkle installation.
+
+Sparkle reads the signed `appcast.xml` from the latest GitHub release and
+fetches its DMG using an exact versioned release URL. Both are release assets;
+no independent feed hosting is needed. The release workflow requires the
+`SPARKLE_PUBLIC_ED_KEY` repository variable and `SPARKLE_PRIVATE_ED_KEY` secret;
+see the README for key generation and backup. The app verifies feed and archive
+signatures before extraction. It defers installation/relaunch until its helper
+and engine processes exit. Users can check manually or disable automatic checks
+from the ZK menu-bar item. Existing installations need one manual/Homebrew
+upgrade to receive this updater.
+
+Local builds without a public key leave updating disabled. The Sparkle
+framework is copied intact, including its universal binaries, symlinks and
+upstream signatures. It is not thinned or relocated with engine dependencies.
+The enclosing app remains ad-hoc signed without Hardened Runtime Library
+Validation; Sparkle signing does not change initial Gatekeeper approval.
 
 For an automated build, run **Actions → Build and publish macOS release → Run
 workflow** on `main`. It allocates the next Toronto-date CalVer tag, builds and

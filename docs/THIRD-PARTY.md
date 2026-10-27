@@ -32,6 +32,9 @@ Steam is optional for ordinary Zero-K account/offline play and required for
 Steam sign-in. No Steam client, account credentials or authentication tickets
 are included in the application.
 
+Sparkle supplies native app updates under the MIT license. Its framework and
+helper signatures are preserved; its license is included as `Sparkle-MIT.txt`.
+
 FreeSans font notices are included separately. Lobby art/music and AI scripts
 retain the notices and attribution in their source repositories and assets.
 Game content and maps are downloaded separately by the user.
@@ -49,3 +52,4 @@ Upstreams:
 - https://gitlab.freedesktop.org/mesa/mesa
 - https://github.com/rlabrecque/Steamworks.NET/releases/tag/2025.164.1
 - https://github.com/dotnet/runtime
+- https://github.com/sparkle-project/Sparkle

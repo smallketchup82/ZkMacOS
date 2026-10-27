@@ -67,6 +67,8 @@ cask "zkmacos" do
   depends_on arch: :arm64
   depends_on macos: :tahoe
 
+  auto_updates true
+
   app "Zero-K.app"
 
   caveats <<~EOS

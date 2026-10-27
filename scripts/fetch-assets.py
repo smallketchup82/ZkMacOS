@@ -32,6 +32,9 @@ for item in json.loads((root / 'assets.lock.json').read_text()).values():
     else:
         with tarfile.open(archive) as source:
             for entry in source.getmembers():
+                if item['kind'] == 'tar-root':
+                    source.extract(entry, destination, filter='data')
+                    continue
                 parts = Path(entry.name).parts
                 if len(parts) < 2:
                     continue

@@ -1,57 +1,116 @@
 import AppKit
 import Foundation
 import Darwin
+import Sparkle
 
-func versionNumbers(_ version: String) -> [Int]? {
-    let value = version.hasPrefix("v") ? String(version.dropFirst()) : version
-    let parts = value.split(separator: ".", omittingEmptySubsequences: false)
-    guard parts.count == 3 else { return nil }
-    var numbers: [Int] = []
-    for part in parts {
-        guard !part.isEmpty, part.allSatisfy({ $0 >= "0" && $0 <= "9" }),
-              let number = Int(part) else { return nil }
-        numbers.append(number)
+// The engine owns the Dock entry. This delegate keeps the hidden bootstrap alive
+// until all bundled game processes exit, including an engine orphaned by a helper.
+final class LauncherDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
+    var updatesEnabled = true
+    var process: Process?
+    var childStatus: Int32 = 0
+    var pendingInstall: (() -> Void)?
+    var exitTimer: Timer?
+    var statusItem: NSStatusItem?
+    lazy var updaterController = SPUStandardUpdaterController(
+        startingUpdater: false, updaterDelegate: self, userDriverDelegate: nil)
+
+    func gameIsRunning() -> Bool {
+        if process?.isRunning == true { return true }
+        let probe = Process()
+        probe.executableURL = URL(fileURLWithPath: "/bin/ps")
+        probe.arguments = ["-ww", "-axo", "comm="]
+        let pipe = Pipe()
+        probe.standardOutput = pipe
+        do {
+            try probe.run()
+            let output = pipe.fileHandleForReading.readDataToEndOfFile()
+            probe.waitUntilExit()
+            guard probe.terminationStatus == 0,
+                  let commands = String(data: output, encoding: .utf8) else { return true }
+            return bundledGameIsRunning(commands: commands, bundle: Bundle.main.bundleURL)
+        } catch {
+            return true // Never replace the app if process discovery failed.
+        }
     }
-    return numbers
-}
 
-func availableUpdate(_ data: Data, currentVersion: String) -> String? {
-    struct Release: Decodable {
-        let tag_name: String
-        let draft: Bool
-        let prerelease: Bool
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        guard updatesEnabled, Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") != nil else { return }
+        let menu = NSMenu()
+        let check = menu.addItem(withTitle: "Check for Updates…",
+                                 action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)), keyEquivalent: "")
+        check.target = updaterController
+        let automatic = menu.addItem(withTitle: "Check Automatically",
+                                     action: #selector(toggleAutomaticChecks(_:)), keyEquivalent: "")
+        automatic.target = self
+        automatic.state = updaterController.updater.automaticallyChecksForUpdates ? .on : .off
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem?.button?.title = "ZK"
+        statusItem?.button?.toolTip = "Zero-K Updates"
+        statusItem?.menu = menu
+        updaterController.startUpdater()
     }
-    guard let release = try? JSONDecoder().decode(Release.self, from: data),
-          !release.draft, !release.prerelease,
-          let current = versionNumbers(currentVersion),
-          let latest = versionNumbers(release.tag_name),
-          current.lexicographicallyPrecedes(latest) else { return nil }
-    return release.tag_name
-}
 
-func checkForUpdates() {
-    guard let currentVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String else { return }
-    let endpoint = URL(string: "https://api.github.com/repos/smallketchup82/ZkMacOS/releases/latest")!
-    var request = URLRequest(url: endpoint, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
-    request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-    request.setValue("ZkMacOS/" + currentVersion, forHTTPHeaderField: "User-Agent")
-    URLSession.shared.dataTask(with: request) { data, response, error in
-        guard error == nil, (response as? HTTPURLResponse)?.statusCode == 200,
-              let data, let latest = availableUpdate(data, currentVersion: currentVersion) else { return }
-        DispatchQueue.main.async {
-            let releases = URL(string: "https://github.com/smallketchup82/ZkMacOS/releases/latest")!
-            let alert = NSAlert()
-            alert.alertStyle = .informational
-            alert.messageText = "A ZkMacOS update is available"
-            alert.informativeText = "ZkMacOS \(latest) is available. You have \(currentVersion).\n\nQuit Zero-K before updating. Update through your package manager, or download the latest version from GitHub Releases.\n\nHomebrew:\nbrew update\nbrew upgrade --cask smallketchup82/zkmacos/zkmacos\n\n\(releases.absoluteString)"
-            alert.addButton(withTitle: "Open GitHub Releases")
-            alert.addButton(withTitle: "Later")
-            NSApplication.shared.activate(ignoringOtherApps: true)
-            if alert.runModal() == .alertFirstButtonReturn {
-                NSWorkspace.shared.open(releases)
+    @objc func toggleAutomaticChecks(_ sender: NSMenuItem) {
+        let updater = updaterController.updater
+        updater.automaticallyChecksForUpdates.toggle()
+        sender.state = updater.automaticallyChecksForUpdates ? .on : .off
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if gameIsRunning() {
+            // Sparkle also requests normal application termination before installation.
+            // Refuse it while the game runs; never kill a match to apply an update.
+            return .terminateCancel
+        }
+        return .terminateNow
+    }
+
+    func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem,
+                 untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
+        guard gameIsRunning() else { return false }
+        pendingInstall = installHandler
+        let alert = NSAlert()
+        alert.messageText = "Update ready to install"
+        alert.informativeText = "Quit Zero-K normally when you have finished playing. The update will then install and Zero-K will reopen."
+        alert.addButton(withTitle: "Continue Playing")
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        alert.runModal()
+        return true
+    }
+
+    func childDidExit(_ status: Int32) {
+        childStatus = status
+        finishWhenGameExits()
+        // A helper can exit before its engine. Wait for both before letting
+        // Sparkle's installer observe bootstrap termination.
+        if gameIsRunning() {
+            exitTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+                self?.finishWhenGameExits()
             }
         }
-    }.resume()
+    }
+
+    func finishWhenGameExits() {
+        guard !gameIsRunning() else { return }
+        exitTimer?.invalidate()
+        exitTimer = nil
+        if let install = pendingInstall {
+            pendingInstall = nil
+            install()
+        } else {
+            NSApplication.shared.terminate(nil)
+        }
+    }
+}
+
+func bundledGameIsRunning(commands: String, bundle: URL) -> Bool {
+    let contents = bundle.resolvingSymlinksInPath().appendingPathComponent("Contents").path
+    return commands.split(separator: "\n").contains { line in
+        let command = line.trimmingCharacters(in: .whitespaces)
+        return command == contents + "/MacOS/spring"
+            || command.hasPrefix(contents + "/Resources/client/")
+    }
 }
 
 func showStartupWarning(in data: URL) throws {
@@ -135,9 +194,11 @@ do {
     if engineOnly { arguments.removeFirst() }
     if !engineOnly { try showStartupWarning(in: data) }
     let helper = client.appendingPathComponent("Zero-K-Helper")
+    let delegate = LauncherDelegate()
     let process = Process()
+    delegate.process = process
     process.terminationHandler = { finished in
-        DispatchQueue.main.async { exit(finished.terminationStatus) }
+        DispatchQueue.main.async { delegate.childDidExit(finished.terminationStatus) }
     }
     process.currentDirectoryURL = data
     process.environment = environment
@@ -160,9 +221,14 @@ do {
         process.arguments = ["--isolation-dir", data.path, "--write-dir", data.path, "--config", data.appendingPathComponent("springsettings.cfg").path, "--menu", "Chobby macos-source"]
         try process.run()
     }
-    if !engineOnly { checkForUpdates() }
-    // Keep the main thread available for update dialogs and child termination.
-    RunLoop.main.run()
+    let application = NSApplication.shared
+    application.setActivationPolicy(.accessory)
+    // Direct --engine invocations retain the same safe quit handling but don't
+    // start a second updater alongside the ordinary launcher.
+    application.delegate = delegate
+    delegate.updatesEnabled = !engineOnly
+    withExtendedLifetime(delegate) { application.run() }
+    exit(delegate.childStatus)
 } catch {
     let alert = NSAlert()
     alert.messageText = "Zero-K could not start"
