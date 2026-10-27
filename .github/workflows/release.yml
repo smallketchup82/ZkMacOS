@@ -66,9 +66,8 @@ jobs:
         run: |
           sudo softwareupdate --install-rosetta --agree-to-license
           brew update
-          # The runner's OpenSSL 3 commands conflict with Python's OpenSSL 4 dependency.
-          brew unlink openssl@3
-          brew bundle --file=Brewfile
+          # Keep installed runner dependencies to avoid unrelated Python/OpenSSL upgrades.
+          brew bundle --file=Brewfile --no-upgrade
           printf '/Library/Frameworks/Mono.framework/Commands\n' >> "$GITHUB_PATH"
           test "$(uname -m)" = arm64
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
