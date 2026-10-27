@@ -8,8 +8,22 @@ DMGs are not currently claimed.
   Mono, .NET or Homebrew installed, including the normal macOS trust process.
 - Validate a full multiplayer match against the matching Windows/Linux engine;
   reporting the correct version and connecting are not synchronization proof.
-- Test multiple displays, changing Retina density, fullscreen, focus changes,
-  menu bar/notch placement and cursor capture on more hardware.
+- Test multiple displays, changing Retina density, menu bar/notch placement and
+  cursor capture on more hardware. macOS fullscreen now avoids redundant window
+  resizing and framebuffer readbacks when hiding/restoring the persistent Mesa
+  context. Still validate repeated lobby/game transitions, Command-Tab, native
+  titlebar fullscreen and display disconnection during a real match.
+  Run `uv run --no-project --python python3 python tests/check-fullscreen.py`
+  for transition/geometry regression checks; add `--native` for a short real
+  SDL/Cocoa fullscreen and window restoration probe (opens a temporary window).
+- Validate automatic notch-HUD switching on more MacBook models, external
+  monitors and UI scales. The gap follows the active display's native camera
+  boundaries. Native Spaces fullscreen, notch-covering fullscreen and windowed
+  restoration have local probes; multi-display disconnection and full-match
+  transitions still need broader testing. Run `luajit tests/check-notch-spacing.lua`
+  and `luajit tests/check-notch-settings.lua` for layout/settings regressions.
+  Native coverage probe: compile `tests/check-notch.mm` with the engine's Mac
+  WindowManagerHelper, SDL2 and AppKit, then run with and without `custom`.
 - Investigate intermittent missing Chili panel backgrounds after joining a
   multiplayer match. The owner requested deferring this while packaging proceeds.
 - Optional graphics effects still need individual compatibility work, including
