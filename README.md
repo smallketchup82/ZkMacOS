@@ -227,6 +227,10 @@ The lobby settings provide separate display choices for the menu and game;
 both start windowed. To change mouse capture, use **in-game Settings → Interface
 → Mouse Cursor → Lock Cursor to Window**. It starts disabled.
 
+### Support
+
+Feel free to email me at [ketchup@smkt.ca](mailto:ketchup@smkt.ca) for any questions or concerns. If you're experiencing something that clearly looks wrong, read the section below instead.
+
 ### Reporting problems
 
 [Open an issue here](https://github.com/smallketchup82/ZkMacOS/issues), with your
