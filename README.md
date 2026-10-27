@@ -115,6 +115,13 @@ See [distribution and macOS approval](docs/DISTRIBUTION.md) for more detail.
 
 ### Updating a manual installation
 
+At launch, the app checks GitHub for a newer published release in the
+background. If one is available, a native macOS dialog shows the installed
+and available versions, package-manager update instructions, and an **Open
+GitHub Releases** button. **Later** dismisses it until the next launch.
+Offline or failed checks are silent and do not delay startup. The app checks
+once per launch and does not download or install updates itself.
+
 Quit Zero-K completely, then replace the app in Applications with the new one
 from the DMG. Your downloaded content and saved preferences remain in
 Application Support. New defaults apply to fresh profiles; updating the app
@@ -123,6 +130,11 @@ does not overwrite your existing choices.
 ## Settings, controls, and application data
 
 ### First-launch defaults
+
+Before the lobby starts for the first time on each app version, a native
+dialog repeats the warnings above and links to this project's issue tracker.
+Choose **I Understand** to continue. Acknowledgments are
+saved in `startup-warning-versions.json` in your Application Support data.
 
 | Setting | Default |
 | --- | --- |

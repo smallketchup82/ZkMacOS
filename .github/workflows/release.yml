@@ -112,6 +112,8 @@ jobs:
           luajit tests/check-metalfx-settings.lua
           uv run --no-project --python python3 python tests/check-cask.py
           uv run --no-project --python python3 python tests/check-release-version.py
+          swiftc -D UPDATE_CHECK_TESTS -framework AppKit app/main.swift tests/check-updates.swift -o build/check-updates
+          build/check-updates
       - name: Build the styled DMG without Finder automation
         run: ./scripts/build-dmg.sh
       - name: Verify and stage release metadata
