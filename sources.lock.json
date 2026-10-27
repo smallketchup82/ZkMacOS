@@ -9,7 +9,7 @@
       "recoil-metalfx-spatial.patch": "1f8f2610f47c60a5d26942e366ebf8b531f7cb2f835867245704f16588dd25ca",
       "recoil-macos-fullscreen.patch": "a9ddc3ad5ec223846146e7711463eeb3658820a7a2da91bab23f32a7eed186a5",
       "recoil-macos-notch.patch": "ec79b90d25fa2db4bcfa3794962131dfacbf43dda3697110cbcc379d586aed99",
-      "recoil-macos-update-menu.patch": "91ba130f949e3885b45bd574be856de0fc24654e87c17aea916fee8a48c723e7"
+      "recoil-macos-update-menu.patch": "94acbc25f1cfbbbaed40da2ab6a67411d21d1582305f9b5f488fdd7d14805c48"
     }
   },
   "chobby": {

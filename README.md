@@ -122,8 +122,8 @@ See [distribution and macOS approval](docs/DISTRIBUTION.md) for more detail.
 
 Sparkle checks for stable releases in the background and provides a native
 update window to download, verify, and install them. Choose **Zero-K → Check for
-Updates…** in the application menu. The **ZK** menu on the right side of the macOS
-menu bar also offers **Check for Updates…** and **Check Automatically**.
+Updates…** in the application menu, or toggle **Zero-K → Check Automatically**.
+The launcher does not add a separate menu bar icon.
 Automatic checks are enabled by default; unattended installation is off by
 default. Checks follow Sparkle's schedule rather than running on every launch.
 

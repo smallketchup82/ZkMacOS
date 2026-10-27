@@ -12,7 +12,6 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegat
     var childStatus: Int32 = 0
     var pendingInstall: (() -> Void)?
     var exitTimer: Timer?
-    var statusItem: NSStatusItem?
     lazy var updaterController = SPUStandardUpdaterController(
         startingUpdater: false, updaterDelegate: self, userDriverDelegate: nil)
 
@@ -40,29 +39,30 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegat
         DistributedNotificationCenter.default().addObserver(
             self, selector: #selector(checkForUpdatesFromGame(_:)),
             name: Notification.Name("org.zerok.macos.checkForUpdates"), object: updateRequestID)
-        let menu = NSMenu()
-        let check = menu.addItem(withTitle: "Check for Updates…",
-                                 action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)), keyEquivalent: "")
-        check.target = updaterController
-        let automatic = menu.addItem(withTitle: "Check Automatically",
-                                     action: #selector(toggleAutomaticChecks(_:)), keyEquivalent: "")
-        automatic.target = self
-        automatic.state = updaterController.updater.automaticallyChecksForUpdates ? .on : .off
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem?.button?.title = "ZK"
-        statusItem?.button?.toolTip = "Zero-K Updates"
-        statusItem?.menu = menu
+        DistributedNotificationCenter.default().addObserver(
+            self, selector: #selector(toggleAutomaticChecks(_:)),
+            name: Notification.Name("org.zerok.macos.toggleAutomaticChecks"), object: updateRequestID)
+        DistributedNotificationCenter.default().addObserver(
+            self, selector: #selector(publishAutomaticChecks(_:)),
+            name: Notification.Name("org.zerok.macos.requestAutomaticChecks"), object: updateRequestID)
         updaterController.startUpdater()
+        publishAutomaticChecks()
     }
 
     @objc func checkForUpdatesFromGame(_ notification: Notification) {
         updaterController.checkForUpdates(nil)
     }
 
-    @objc func toggleAutomaticChecks(_ sender: NSMenuItem) {
-        let updater = updaterController.updater
-        updater.automaticallyChecksForUpdates.toggle()
-        sender.state = updater.automaticallyChecksForUpdates ? .on : .off
+    @objc func toggleAutomaticChecks(_ notification: Notification) {
+        updaterController.updater.automaticallyChecksForUpdates.toggle()
+        publishAutomaticChecks()
+    }
+
+    @objc func publishAutomaticChecks(_ notification: Notification? = nil) {
+        DistributedNotificationCenter.default().postNotificationName(
+            Notification.Name("org.zerok.macos.automaticChecksChanged"), object: updateRequestID,
+            userInfo: ["enabled": updaterController.updater.automaticallyChecksForUpdates],
+            deliverImmediately: true)
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -205,6 +205,7 @@ do {
     let delegate = LauncherDelegate()
     if !engineOnly, Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") != nil {
         environment["ZEROK_UPDATE_REQUEST_ID"] = delegate.updateRequestID
+        environment["ZEROK_AUTOMATIC_UPDATE_CHECKS"] = delegate.updaterController.updater.automaticallyChecksForUpdates ? "1" : "0"
     }
     let process = Process()
     delegate.process = process
