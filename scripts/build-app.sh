@@ -6,6 +6,7 @@ mkdir -p build/logs
 export UV_CACHE_DIR="$ROOT/build/uv-cache"
 export DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
 export DOTNET_NOLOGO=1
+export PKG_CONFIG="${PKG_CONFIG:-$(brew --prefix)/bin/pkg-config}"
 
 uv run --no-project --python python3 python scripts/fetch-sources.py
 uv run --no-project --python python3 python scripts/fetch-assets.py
