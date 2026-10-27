@@ -1,0 +1,53 @@
+[game]
+{
+[allyteam1]
+{
+numallies=0;
+}
+[team0]
+{
+allyteam=0;
+teamleader=0;
+rgbcolor=0.99609375 0.546875 0;
+}
+[allyteam0]
+{
+numallies=0;
+}
+[modoptions]
+{
+}
+[player0]
+{
+rank=0;
+team=0;
+name=Player;
+isfromdemo=0;
+}
+[ai0]
+{
+team=1;
+isfromdemo=0;
+host=0;
+name=AI: Novice (1);
+version=stable;
+shortname=1052188CircuitAINovice64;
+}
+[team1]
+{
+allyteam=1;
+teamleader=0;
+rgbcolor=0.99609375 0.546875 0;
+}
+ishost=1;
+hostip=127.0.0.1;
+numusers=2;
+startpostype=0;
+gametype=Zero-K v1.14.10.3;
+mapname=Fairyland 1.31;
+myplayername=Player;
+numplayers=1;
+gamestartdelay=0;
+nohelperais=0;
+hostport=0;
+}

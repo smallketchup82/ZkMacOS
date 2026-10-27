@@ -1,0 +1,4 @@
+*.patch -whitespace
+*.sh text eol=lf
+*.py text eol=lf
+*.swift text eol=lf

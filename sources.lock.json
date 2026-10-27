@@ -1,0 +1,17 @@
+{
+  "recoil": {
+    "url": "https://github.com/smallketchup82/RecoilEngine.git",
+    "revision": "d0bc0a499cea865cfdb3b159de3384b15bea059f",
+    "engine_version": "2026.07.04",
+    "upstream_base": "de69361239d8c8b1012dba3f5aa3122954ea4da3",
+    "circuitai_patch_sha256": "d735584e956555895756ae2d6cc542e40f5433398f0eff7fdc6d0cc0a47970ea"
+  },
+  "chobby": {
+    "url": "https://github.com/smallketchup82/Chobby.git",
+    "revision": "b71b98f1f52f0023a1f95d355afb149d4d7faac4"
+  },
+  "infrastructure": {
+    "url": "https://github.com/smallketchup82/Zero-K-Infrastructure.git",
+    "revision": "44984892b51185c07702907c6c905addbd875888"
+  }
+}

@@ -1,0 +1,39 @@
+[game]
+{
+	ishost=1;
+	hostip=127.0.0.1;
+	hostport=0;
+	myplayername=Player;
+	gametype=Zero-K v1.14.10.3;
+	mapname=Fairyland 1.31;
+	startpostype=0;
+	numplayers=1;
+	numusers=1;
+	numteams=1;
+	numallyteams=1;
+	gamestartdelay=0;
+
+	[player0]
+	{
+		name=Player;
+		team=0;
+		spectator=0;
+	}
+
+	[team0]
+	{
+		teamleader=0;
+		allyteam=0;
+		rgbcolor=0.2 0.6 1;
+		side=Arm;
+	}
+
+	[allyteam0]
+	{
+		numallies=0;
+	}
+
+	[modoptions]
+	{
+	}
+}

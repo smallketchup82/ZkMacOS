@@ -1,0 +1,30 @@
+{
+  "steamworks": {
+    "url": "https://github.com/rlabrecque/Steamworks.NET/releases/download/2025.164.1/Steamworks.NET-Standalone_2025.164.1.zip",
+    "file": "Steamworks.NET-Standalone_2025.164.1.zip",
+    "extract": "steamworks-2025.164.1",
+    "kind": "zip",
+    "sha256": "9412348cc404563be5a43a28347cfeda3c679ee044a14d87a507ed2d796a537d"
+  },
+  "steamworks_source": {
+    "url": "https://github.com/rlabrecque/Steamworks.NET/archive/refs/tags/2025.164.1.tar.gz",
+    "file": "steamworks-net-2025.164.1.tar.gz",
+    "extract": "steamworks-source",
+    "kind": "tar",
+    "sha256": "9161dd60ee2d02b0f0df08aafe17ad51214b5e11d279be8d85240b2cf7b08766"
+  },
+  "mesa": {
+    "url": "https://archive.mesa3d.org/mesa-26.3.0-rc1.tar.xz",
+    "file": "mesa-26.3.0-rc1.tar.xz",
+    "extract": null,
+    "kind": "file",
+    "sha256": "63327d58a51d189c1d1600746c505609bba5c495123b4e51de4e0c038b745542"
+  },
+  "libclc": {
+    "url": "https://gitlab.freedesktop.org/karolherbst/mesa-libclc/-/archive/22.1.8.3/mesa-libclc-22.1.8.3.tar.bz2",
+    "file": "mesa-libclc-22.1.8.3.tar.bz2",
+    "extract": null,
+    "kind": "file",
+    "sha256": "ff6c01fb68c4b885e13400c50298ee6a8bfcf3ac5995cf3039565f6814095226"
+  }
+}

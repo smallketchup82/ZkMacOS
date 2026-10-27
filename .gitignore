@@ -1,0 +1,17 @@
+/external/
+/build/
+/dist/
+/.cache/
+/.local/
+/diagnostics/
+/native-data/
+/zero-k-portable/
+/recoil/
+/recoil-2026.07.04/
+/graphics/
+/steam/
+/*.app/
+**/__pycache__/
+*.pyc
+.DS_Store
+.env
