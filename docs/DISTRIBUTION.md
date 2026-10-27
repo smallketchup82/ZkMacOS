@@ -18,6 +18,13 @@ and commits a versioned cask. See the README for installation and upgrade
 commands. Homebrew upgrades replace the app and preserve
 Application Support; there is no silent in-app updater.
 
+For an automated build, run **Actions → Build and publish macOS release → Run
+workflow** on `main`. It allocates the next Toronto-date CalVer tag, builds and
+audits the app, publishes the completed artifacts, and calls the cask workflow
+directly. It caches dependencies and compiler results between runs. The
+workflow's own release event does not trigger another run with `GITHUB_TOKEN`.
+See the README for version allocation and attached metadata.
+
 The owner intentionally distributes without Developer ID or notarization.
 Build scripts apply only ad-hoc signatures after relocating native code.
 These require no certificate and do not establish an Apple-verified publisher.
@@ -36,7 +43,9 @@ Create a disk image with `./scripts/build-dmg.sh` after building the app. It
 uses `create-dmg` to arrange `Zero-K.app` and an Applications shortcut with an
 install arrow. `app/dmg-background.swift` generates the Retina background.
 Building the image requires a logged-in desktop session and Finder automation
-permission when prompted. This does not rebuild the engine. The build applies
+permission when prompted for the normal interactive build. With `CI=true`,
+the script uses pinned `dmgbuild` 1.6.7 to write the same layout metadata
+without Finder automation. This does not rebuild the engine. The interactive build applies
 `patches/create-dmg-finder-timing.patch` to a temporary copy of the tool
 (tested with create-dmg 1.3.0) so Finder finishes applying the view and saves
 it without reopening into tab defaults on macOS 27. The installed Homebrew

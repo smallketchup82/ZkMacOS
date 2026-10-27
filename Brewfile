@@ -1,5 +1,6 @@
 brew "cmake"
 brew "ninja"
+brew "ccache"
 brew "gcc"
 brew "pkg-config"
 brew "sdl2"

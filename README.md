@@ -336,6 +336,35 @@ and where its changes now live.
 
 ## Package a release
 
+### Automatic release from GitHub Actions
+
+Open **Actions → Build and publish macOS release → Run workflow**, select
+`main`, and click **Run workflow**. No version input or signing secrets are
+needed. The workflow builds the pinned sources on an Apple Silicon macOS 26
+runner, runs the settings checks and app audit, creates the styled DMG without
+Finder automation, and publishes a GitHub release with the DMG, SHA256 checksum,
+source locks, dependency inventory, and audit metadata. It then calls the
+Homebrew cask workflow to update the tap.
+
+CalVer is automatic: `YYYYMM.DD.PATCH` uses the date in **America/Toronto** when
+the run starts. The first release of a day uses `.0`; later releases increment
+the highest matching patch found across all releases and tags. Failed builds
+do not consume a version. Release runs are serialized, and an existing release
+is never replaced. The selected version is embedded in the app; the workflow
+run number supplies its build number.
+
+The workflow caches Homebrew downloads, checksum-verified source archives,
+Python and NuGet packages, compiled Mesa libraries, and C/C++ compiler results.
+Mesa and compiler caches account for native toolchain changes. App packaging,
+auditing, and DMG creation run fresh. Build logs are uploaded even on failure.
+The first run has cold caches and takes longer.
+
+CI checks do not replace GPU playtesting, multiplayer synchronization testing,
+or installation testing on another Mac. Review the workflow logs and keep the
+known limitations in release notes current.
+
+### Manual release from a local build
+
 1. Commit and push the matching fork changes, then update `sources.lock.json`.
    Use clean checkouts matching those pins for a release.
 2. Build and audit the app:
@@ -381,6 +410,10 @@ SHA256, and commits it to `main`. This repository doubles as the tap, so a
 separate `homebrew-*` repository or cross-repository token is not required.
 The cask requires Apple Silicon and macOS 26+, installs `Zero-K.app`, and leaves
 Application Support data untouched during upgrades and uninstallations.
+
+The automatic release workflow invokes this workflow directly because a
+release published using GitHub's built-in Actions token does not trigger a
+second workflow through the release event.
 
 Drafts and prereleases do not update the cask. An older release cannot downgrade
 it, and a changed binary under an existing version is rejected: publish a new

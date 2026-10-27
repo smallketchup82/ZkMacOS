@@ -3,11 +3,19 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 test -d dist/Zero-K.app || { echo "Run ./scripts/build-app.sh first." >&2; exit 1; }
-command -v create-dmg >/dev/null || { echo "Install create-dmg with brew install create-dmg." >&2; exit 1; }
 UV_CACHE_DIR="$ROOT/build/uv-cache" uv run --no-project --python python3 python scripts/audit-app.py
 mkdir -p build/swift-cache
 swiftc -O -module-cache-path build/swift-cache app/dmg-background.swift -o build/dmg-background
 build/dmg-background "$ROOT/build/dmg-background.tiff"
+if [ "${CI:-false}" = true ]; then
+	# Write Finder layout metadata directly; hosted runners cannot approve AppleScript.
+	rm -f dist/Zero-K-macOS-arm64.dmg
+	UV_CACHE_DIR="$ROOT/build/uv-cache" uv run --no-project --python python3 --with dmgbuild==1.6.7 \
+		dmgbuild -s app/dmg-settings.py -D "root=$ROOT" Zero-K "$ROOT/dist/Zero-K-macOS-arm64.dmg"
+	(cd dist && shasum -a 256 Zero-K-macOS-arm64.dmg > Zero-K-macOS-arm64.dmg.sha256)
+	exit 0
+fi
+command -v create-dmg >/dev/null || { echo "Install create-dmg with brew install create-dmg." >&2; exit 1; }
 # Let Finder finish applying the view and avoid reopening into tab defaults on
 # macOS 27. Patch a build-local copy, never the installed tool.
 CREATE_DMG_PREFIX="$(brew --prefix create-dmg)"

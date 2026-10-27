@@ -1,6 +1,11 @@
 name: Update Homebrew cask
 
 on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
   release:
     types: [published]
   workflow_dispatch:
@@ -19,7 +24,7 @@ concurrency:
 
 jobs:
   update:
-    if: github.event_name == 'workflow_dispatch' || !github.event.release.prerelease
+    if: github.event_name != 'release' || !github.event.release.prerelease
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

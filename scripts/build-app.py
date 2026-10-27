@@ -95,9 +95,11 @@ for size in (16, 32, 128, 256, 512):
         pixels = str(size * density)
         subprocess.run(['sips', '-z', pixels, pixels, str(icon), '--out', str(iconset / name)], check=True, capture_output=True)
 subprocess.run(['iconutil', '-c', 'icns', str(iconset), '-o', str(resources / 'Zero-K.icns')], check=True)
+version = os.environ.get('ZKMACOS_VERSION', '0.1.0')
 info = {'CFBundleExecutable': 'Zero-K', 'CFBundleIdentifier': 'org.zerok.macos', 'CFBundleName': 'Zero-K',
-        'CFBundleDisplayName': 'Zero-K', 'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '0.1.0',
-        'CFBundleVersion': '1', 'LSMinimumSystemVersion': '26.0', 'NSHighResolutionCapable': True,
+        'CFBundleDisplayName': 'Zero-K', 'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': version,
+        'CFBundleVersion': os.environ.get('ZKMACOS_BUILD_NUMBER', '1'),
+        'LSMinimumSystemVersion': '26.0', 'NSHighResolutionCapable': True,
         'LSArchitecturePriority': ['arm64'], 'LSUIElement': True, 'CFBundleIconFile': 'Zero-K.icns',
         'NSHumanReadableCopyright': 'Zero-K contributors; see Resources/licenses'}
 (contents / 'Info.plist').write_bytes(plistlib.dumps(info))

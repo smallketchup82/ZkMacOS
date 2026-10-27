@@ -1,0 +1,184 @@
+name: Build and publish macOS release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-release
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-26
+    timeout-minutes: 360
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    env:
+      BUILD_JOBS: '2'
+      ZKMACOS_BUILD_NUMBER: ${{ github.run_number }}
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+      UV_CACHE_DIR: ${{ github.workspace }}/build/uv-cache
+      CCACHE_DIR: ${{ github.workspace }}/build/ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_MAXSIZE: 1G
+      CCACHE_COMPILERCHECK: content
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Choose the next daily CalVer
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$(python3 scripts/next-release-version.py)"
+          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+          printf 'ZKMACOS_VERSION=%s\n' "$tag" >> "$GITHUB_ENV"
+          printf '### Release %s\n\nSource: %s\n' "$tag" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+      - name: Locate dependency caches
+        id: environment
+        run: |
+          printf 'brew-cache=%s\n' "$(brew --cache)" >> "$GITHUB_OUTPUT"
+          printf 'day=%s\n' "$(TZ=America/Toronto date +%Y%m%d)" >> "$GITHUB_OUTPUT"
+      - name: Cache Homebrew downloads
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ steps.environment.outputs.brew-cache }}
+          key: ${{ runner.os }}-${{ runner.arch }}-brew-v1-${{ hashFiles('Brewfile', 'global.json') }}-${{ steps.environment.outputs.day }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-brew-v1-
+      - name: Install build dependencies
+        run: |
+          sudo softwareupdate --install-rosetta --agree-to-license
+          brew update
+          brew bundle --file=Brewfile
+          printf '/Library/Frameworks/Mono.framework/Commands\n' >> "$GITHUB_PATH"
+          test "$(uname -m)" = arm64
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          global-json-file: global.json
+      - name: Identify the native toolchain
+        id: toolchain
+        run: |
+          mkdir -p build/logs
+          {
+            sw_vers
+            xcodebuild -version
+            xcrun --show-sdk-version
+            brew list --formula --versions
+          } > build/logs/toolchain.txt
+          printf 'hash=%s\n' "$(shasum -a 256 build/logs/toolchain.txt | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+      - name: Cache checksum-verified source downloads
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: .cache
+          key: ${{ runner.os }}-${{ runner.arch }}-assets-v1-${{ hashFiles('assets.lock.json') }}
+      - name: Cache Python and NuGet packages
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            build/uv-cache
+            build/nuget
+            ~/.nuget/packages
+          key: ${{ runner.os }}-${{ runner.arch }}-packages-v1-${{ hashFiles('global.json', 'sources.lock.json', 'scripts/build-mesa.sh', 'scripts/build-dmg.sh') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-packages-v1-
+      - name: Cache compiled Mesa libraries
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/mesa
+          key: ${{ runner.os }}-${{ runner.arch }}-mesa-v1-${{ steps.toolchain.outputs.hash }}-${{ hashFiles('assets.lock.json', 'scripts/build-mesa.sh') }}
+      - name: Restore compiler cache
+        id: ccache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/ccache
+          key: ${{ runner.os }}-${{ runner.arch }}-ccache-v1-${{ steps.toolchain.outputs.hash }}-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-ccache-v1-${{ steps.toolchain.outputs.hash }}-
+      - name: Build and audit the ARM64 app
+        run: ./scripts/build-app.sh
+      - name: Run settings and release checks
+        run: |
+          luajit tests/check-settings.lua
+          luajit tests/check-display-sync.lua
+          luajit tests/check-trackpad-settings.lua
+          luajit tests/check-metalfx-settings.lua
+          uv run --no-project --python python3 python tests/check-cask.py
+          uv run --no-project --python python3 python tests/check-release-version.py
+      - name: Build the styled DMG without Finder automation
+        run: ./scripts/build-dmg.sh
+      - name: Verify and stage release metadata
+        run: |
+          (cd dist && shasum -a 256 -c Zero-K-macOS-arm64.dmg.sha256)
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' dist/Zero-K.app/Contents/Info.plist)" = "$ZKMACOS_VERSION"
+          mkdir -p "$RUNNER_TEMP/release-dmg"
+          hdiutil attach -readonly -nobrowse -mountpoint "$RUNNER_TEMP/release-dmg" dist/Zero-K-macOS-arm64.dmg
+          trap 'hdiutil detach "$RUNNER_TEMP/release-dmg"' EXIT
+          uv run --no-project --python python3 python scripts/audit-app.py "$RUNNER_TEMP/release-dmg/Zero-K.app"
+          test -L "$RUNNER_TEMP/release-dmg/Applications"
+          cp sources.lock.json assets.lock.json dist/
+          cp dist/Zero-K.app/Contents/Resources/native-dependencies.json dist/
+          cp dist/Zero-K.app/Contents/Resources/client-build.json dist/
+          cp build/logs/app-audit.json dist/
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: Zero-K-macOS-arm64-${{ steps.version.outputs.tag }}
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            dist/Zero-K-macOS-arm64.dmg
+            dist/Zero-K-macOS-arm64.dmg.sha256
+            dist/*.json
+      - name: Publish the release with completed artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          cat > build/release-notes.md <<'EOF'
+          Unofficial, experimental Zero-K client for Apple Silicon Macs running macOS 26 or newer.
+
+          Download the DMG and its SHA256 checksum. Drag Zero-K into Applications; see the repository README for macOS approval instructions. The app is ad-hoc signed and is not notarized. Settings and downloaded content remain in Application Support.
+
+          Includes optional MetalFX spatial upscaling, configurable in lobby Graphics settings, in-game Display settings, or springsettings.cfg. It is disabled by default and works with Retina text and UI mode. Its extra graphics transfers may reduce FPS.
+
+          This automated build passes settings tests and the bundle audit. CI does not establish multiplayer synchronization, GPU rendering correctness, or long-session stability. Report port bugs in this repository, not to the official Zero-K developers.
+
+          Source pins and native dependency metadata are attached. OpenAI Codex assisted with this port and its release tooling.
+          EOF
+          printf '\nSource commit: %s\n' "$GITHUB_SHA" >> build/release-notes.md
+          gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "ZkMacOS $RELEASE_TAG" --draft --generate-notes --notes-file build/release-notes.md \
+            dist/Zero-K-macOS-arm64.dmg dist/Zero-K-macOS-arm64.dmg.sha256 dist/*.json
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+          printf '\n[Download release](https://github.com/%s/releases/tag/%s)\n' "$GITHUB_REPOSITORY" "$RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"
+      - name: Save compiler results even after a later failure
+        if: always() && steps.ccache.outcome == 'success' && steps.ccache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/ccache
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: release-build-logs-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            build/logs/
+            build/launcher-build.log
+
+  update-homebrew:
+    needs: release
+    permissions:
+      contents: write
+    uses: ./.github/workflows/update-homebrew.yml
+    with:
+      tag: ${{ needs.release.outputs.tag }}

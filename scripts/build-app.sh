@@ -21,6 +21,9 @@ ENGINE_CMAKE_ARGS=(-S "$ROOT/external/recoil" -B "$ROOT/build/engine" -G Ninja
 	-DCMAKE_CXX_COMPILER="$(brew --prefix gcc)/bin/g++-16"
 	-DCMAKE_BUILD_TYPE=RelWithDebInfo -DMAC_MESA_PREFIX="$ROOT/build/mesa"
 	-DVERSION_OVERRIDE="$ENGINE_VERSION")
+if command -v ccache >/dev/null; then
+	ENGINE_CMAKE_ARGS+=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
+fi
 ENGINE_CONFIGURATION="$(printf '%s\n' "${ENGINE_CMAKE_ARGS[@]}" | shasum -a 256)"
 if [ ! -f build/engine/CMakeCache.txt ] || [ "${RECONFIGURE_ENGINE:-0}" = 1 ] || \
 	[ "$(cat build/engine/zk-configuration.sha256 2>/dev/null || true)" != "$ENGINE_CONFIGURATION" ]; then
