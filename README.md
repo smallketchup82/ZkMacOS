@@ -120,6 +120,17 @@ from the DMG. Your downloaded content and saved preferences remain in
 Application Support. New defaults apply to fresh profiles; updating the app
 does not overwrite your existing choices.
 
+### macOS Game Mode
+
+The app declares its game category and opts into macOS Game Mode. To use it,
+put Zero-K in macOS full-screen mode and keep it in the foreground. The default
+windowed mode does not activate Game Mode.
+
+On macOS 26, press **Command-Esc** while in full screen, then open Game Overlay
+settings to check Game Mode. If you previously turned it off for Zero-K, turn it
+back on there; macOS remembers that choice across launches. See
+[Apple's Game Mode instructions](https://support.apple.com/en-us/105118).
+
 ## Settings, controls, and application data
 
 ### First-launch defaults

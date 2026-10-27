@@ -3,6 +3,7 @@ from pathlib import Path
 import argparse
 import importlib.util
 import json
+import plistlib
 import subprocess
 import struct
 
@@ -14,6 +15,11 @@ spec = importlib.util.spec_from_file_location('libraries', Path(__file__).with_n
 libraries = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(libraries)
 errors, binaries = [], []
+info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
+if info.get('LSApplicationCategoryType') != 'public.app-category.strategy-games':
+    errors.append('Missing strategy game application category')
+if info.get('LSSupportsGameMode') is not True:
+    errors.append('Game Mode support must be enabled')
 for file in app.rglob('*'):
     relative = str(file.relative_to(app))
     if file.is_symlink() and not file.resolve().is_relative_to(app):
