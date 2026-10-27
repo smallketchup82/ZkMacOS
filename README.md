@@ -326,9 +326,15 @@ upstream Zero-K projects or their contributors' work to AI.
 
 ## Licensing and third-party projects
 
-The central ZkMacOS repository is licensed under [GNU GPL v3](LICENSE).
+Unless a file states otherwise, all original ZkMacOS source code, scripts,
+documentation, configuration defaults, and artwork are licensed under the
+[GNU General Public License, version 2 or any later version](LICENSE)
+(`GPL-2.0-or-later`), following Zero-K's GPL v2 licensing.
+
 Upstream projects, libraries, assets, and ported files retain their own
-copyrights and licenses. See
+copyrights and licenses. This includes the infrastructure launcher's GPL v3
+license and the separate licenses of bundled dependencies; this grant does
+not relicense third-party work. See
 [third-party notices](docs/THIRD-PARTY.md). The app also carries notices under
 `Zero-K.app/Contents/Resources/licenses/` and records native dependencies and
 source revisions under `Contents/Resources/`.

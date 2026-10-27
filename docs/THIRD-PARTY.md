@@ -4,6 +4,13 @@ This application is an unofficial macOS build of Zero-K. Copyright remains
 with the respective authors. The application does not contain a player's
 account, saved login, maps, game downloads, replays or logs.
 
+Unless a file states otherwise, original ZkMacOS code, scripts, documentation,
+configuration defaults, and artwork are licensed under the GNU General Public
+License, version 2 or any later version (GPL-2.0-or-later). This follows the
+Zero-K game repository's GPL v2 licensing. Upstream and third-party works
+retain their existing licenses, including the infrastructure launcher's GPL v3;
+the ZkMacOS license does not replace those terms.
+
 The distribution includes Recoil and Chobby (GPL v2 or later), the Zero-K
 launcher code (GPL v3), Mesa/Zink/KosmicKrisp (MIT and notices in the Mesa
 source tree), SDL/sdl2-compat (zlib), FreeType (FTL/GPL), fontconfig (MIT),

@@ -101,7 +101,8 @@ info = {'CFBundleExecutable': 'Zero-K', 'CFBundleIdentifier': 'org.zerok.macos',
         'LSArchitecturePriority': ['arm64'], 'LSUIElement': True, 'CFBundleIconFile': 'Zero-K.icns',
         'NSHumanReadableCopyright': 'Zero-K contributors; see Resources/licenses'}
 (contents / 'Info.plist').write_bytes(plistlib.dumps(info))
-for source, name in ((engine_source / 'LICENSE.html', 'Recoil-GPL.html'),
+for source, name in ((root / 'LICENSE', 'ZkMacOS-GPL.txt'),
+                    (engine_source / 'LICENSE.html', 'Recoil-GPL.html'),
                     (root / 'external/infrastructure/LICENSE', 'Launcher-GPL.txt'),
                     (root / '.cache/steamworks-2025.164.1/LICENSE.txt', 'Steamworks.NET-MIT.txt'),
                     (engine_source / 'cont/fonts/COPYING', 'FreeSans-license.txt')):
