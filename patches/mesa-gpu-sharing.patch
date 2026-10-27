@@ -1,0 +1,128 @@
+--- a/src/gallium/targets/dri/dri_target.c
++++ b/src/gallium/targets/dri/dri_target.c
+@@ -2,3 +2,32 @@
+  
+ #include "target-helpers/drm_helper.h"
+ #include "target-helpers/sw_helper.h"
++
++#if defined(__APPLE__) && defined(GALLIUM_ZINK)
++#include "main/context.h"
++#include "main/state.h"
++#include "state_tracker/st_context.h"
++#include "pipe/p_screen.h"
++#include "zink/zink_public.h"
++
++PUBLIC bool recoil_mesa_get_vk_color_buffer_v1(void **device, uint64_t *image);
++
++PUBLIC bool
++recoil_mesa_get_vk_color_buffer_v1(void **device, uint64_t *image)
++{
++   struct gl_context *ctx = _mesa_get_current_context();
++   if (!ctx || !device || !image)
++      return false;
++
++   struct st_context *st = st_context(ctx);
++   if (strncmp(st->screen->get_name(st->screen), "zink ", 5))
++      return false;
++
++   _mesa_update_state(ctx);
++   struct gl_renderbuffer *buffer = ctx->ReadBuffer->_ColorReadBuffer;
++   if (!buffer || !buffer->texture || buffer->NumSamples > 1)
++      return false;
++
++   return zink_recoil_get_vk_image(st->screen, buffer->texture, device, image);
++}
++#endif
+--- a/src/gallium/targets/dri/dri.sym.in
++++ b/src/gallium/targets/dri/dri.sym.in
+@@ -1,5 +1,6 @@
+ {
+ 	global:
++                recoil_mesa_get_vk_color_buffer_v1;
+                 # shared-glapi exported from libgallium:
+                 _mesa_glapi_get_dispatch_table_size;
+                 _mesa_glapi_get_proc_address;
+--- a/src/gallium/drivers/zink/zink_public.h
++++ b/src/gallium/drivers/zink/zink_public.h
+@@ -24,10 +24,18 @@
+ #ifndef ZINK_PUBLIC_H
+ #define ZINK_PUBLIC_H
+ 
++#include <stdbool.h>
++#include <stdint.h>
++
+ struct pipe_screen;
+ struct renderonly;
+ struct sw_winsys;
+ struct pipe_screen_config;
++struct pipe_resource;
++
++bool
++zink_recoil_get_vk_image(struct pipe_screen *screen, struct pipe_resource *resource,
++                        void **device, uint64_t *image);
+ 
+ struct pipe_screen *
+ zink_create_screen(struct sw_winsys *winsys, const struct pipe_screen_config *config);
+--- a/src/gallium/drivers/zink/zink_resource.c
++++ b/src/gallium/drivers/zink/zink_resource.c
+@@ -22,6 +22,7 @@
+  */
+ 
+ #include "zink_resource.h"
++#include "zink_public.h"
+ 
+ #include "zink_batch.h"
+ #include "zink_clear.h"
+@@ -3904,3 +3905,20 @@
+    pctx->transfer_map_clientptr_range = zink_transfer_map_clientptr_range;
+    pctx->transfer_unmap_clientptr_range = zink_transfer_unmap_clientptr_range;
+ }
++
++bool
++zink_recoil_get_vk_image(struct pipe_screen *pscreen, struct pipe_resource *resource,
++                        void **device, uint64_t *image)
++{
++   struct zink_screen *screen = zink_screen(pscreen);
++   struct zink_resource *res = zink_resource(resource);
++   if (zink_driverid(screen) != VK_DRIVER_ID_MESA_KOSMICKRISP ||
++       !res->obj || res->obj->is_buffer || res->swapchain || res->transient ||
++       resource->target != PIPE_TEXTURE_2D || resource->nr_samples > 1 ||
++       resource->last_level != 0 || resource->array_size != 1)
++      return false;
++
++   *device = (void *)screen->dev;
++   *image = (uint64_t)res->obj->image;
++   return true;
++}
+--- a/src/kosmickrisp/vulkan/kk_image.c
++++ b/src/kosmickrisp/vulkan/kk_image.c
+@@ -20,6 +20,29 @@
+ #include "vk_enum_to_str.h"
+ #include "vk_format.h"
+ #include "wsi_common_private.h"
++
++PUBLIC bool recoil_kk_get_metal_texture_v1(void *device_handle, uint64_t image_handle,
++                                          void **device, void **texture);
++
++PUBLIC bool
++recoil_kk_get_metal_texture_v1(void *device_handle, uint64_t image_handle,
++                              void **device, void **texture)
++{
++   if (!device_handle || !image_handle || !device || !texture)
++      return false;
++
++   VK_FROM_HANDLE(kk_device, dev, (VkDevice)device_handle);
++   VK_FROM_HANDLE(kk_image, image, (VkImage)image_handle);
++   if (image->vk.base.device != &dev->vk || image->plane_count != 1 ||
++       image->vk.image_type != VK_IMAGE_TYPE_2D || image->vk.samples != 1 ||
++       image->vk.array_layers != 1 || image->vk.mip_levels != 1 ||
++       !image->planes[0].mtl_handle)
++      return false;
++
++   *device = dev->mtl_handle;
++   *texture = image->planes[0].mtl_handle;
++   return true;
++}
+ 
+ static VkFormatFeatureFlags2
+ kk_get_image_plane_format_features(struct kk_physical_device *pdev,

@@ -12,6 +12,7 @@
 #   LLVM_PREFIX    default: $(brew --prefix llvm), for KosmicKrisp's kernels
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK_DIR="$(mkdir -p "$1" && cd "$1" && pwd)"
 PREFIX="$(mkdir -p "$2" && cd "$2" && pwd)"
 MESA_VERSION=26.3.0-rc1
@@ -31,6 +32,23 @@ if [ ! -d "$MESA_SRC" ]; then
 	tar -xf "$MESA_TARBALL" -C "$MESA_SRC" --strip-components 1
 
 fi
+
+uv run --no-project --python python3 python - "$MESA_SRC" "$ROOT" <<'PY'
+from pathlib import Path
+import hashlib
+import json
+import subprocess
+import sys
+source, root = map(Path, sys.argv[1:])
+for filename, expected in json.loads((root / 'assets.lock.json').read_text())['mesa'].get('patches', {}).items():
+    patch = root / 'patches' / filename
+    if hashlib.sha256(patch.read_bytes()).hexdigest() != expected:
+        raise RuntimeError(f'{filename} differs from the asset lock')
+    applied = subprocess.run(['git', 'apply', '--reverse', '--check', str(patch)], cwd=source, capture_output=True)
+    if applied.returncode:
+        subprocess.run(['git', 'apply', '--check', str(patch)], cwd=source, check=True)
+        subprocess.run(['git', 'apply', str(patch)], cwd=source, check=True)
+PY
 
 # LLVM 23+ libclc lacks the SPIR-V target Mesa compiles KosmicKrisp's kernels for,
 # Homebrew's mesa uses this fork for the same reason
@@ -89,3 +107,5 @@ PATH="$LLVM_PREFIX/bin:$PATH" PKG_CONFIG_PATH="$LIBCLC_PREFIX/share/pkgconfig:${
 	-Dvulkan-drivers=kosmickrisp \
 	-Dllvm=enabled
 PATH="$LLVM_PREFIX/bin:$PATH" ninja -C "$WORK_DIR/build-kk" -j "${BUILD_JOBS:-4}" install
+shasum -a 256 "$ROOT/assets.lock.json" "$ROOT/scripts/build-mesa.sh" "$ROOT/patches/mesa-gpu-sharing.patch" \
+	| shasum -a 256 > "$PREFIX/.zk-build-inputs.sha256"

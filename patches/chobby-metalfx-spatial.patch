@@ -1,5 +1,5 @@
 diff --git a/LuaMenu/configs/gameConfig/zk/settingsMenu.lua b/LuaMenu/configs/gameConfig/zk/settingsMenu.lua
-index 84a97f1..68074a1 100644
+index 84a97f1..8254744 100644
 --- a/LuaMenu/configs/gameConfig/zk/settingsMenu.lua
 +++ b/LuaMenu/configs/gameConfig/zk/settingsMenu.lua
 @@ -1365,6 +1365,18 @@ if isMac then
@@ -9,7 +9,7 @@ index 84a97f1..68074a1 100644
 +	local metalFXSetting = {
 +		name = "MacMetalFXSpatial",
 +		humanName = "MetalFX spatial upscaling",
-+		desc = "Upscales the game world in Retina text and UI mode, keeping UI sharp. Applies immediately in game. Has no effect in Standard or Full Retina mode, or on a non-Retina display. Extra graphics transfers may reduce performance. Falls back to bilinear scaling if unavailable.",
++		desc = "Upscales the game world in Retina text and UI mode, keeping UI sharp. Applies immediately in game. Has no effect in Standard or Full Retina mode, or on a non-Retina display. May reduce performance. Falls back to bilinear scaling if unavailable.",
 +		defaultFunction = function()
 +			return Spring.GetConfigInt("MacMetalFXSpatial", 0) == 1 and "On" or "Off"
 +		end,
@@ -74,7 +74,7 @@ index 7e6196b..c6b1313 100644
 +	end
  end
 diff --git a/macos/game-data/LuaUI/Widgets/gui_macos_display.lua b/macos/game-data/LuaUI/Widgets/gui_macos_display.lua
-index 98b108e..b066fcc 100644
+index 98b108e..5ec3055 100644
 --- a/macos/game-data/LuaUI/Widgets/gui_macos_display.lua
 +++ b/macos/game-data/LuaUI/Widgets/gui_macos_display.lua
 @@ -6,7 +6,7 @@ function widget:GetInfo()
@@ -92,7 +92,7 @@ index 98b108e..b066fcc 100644
  	},
 +	metalFX = {
 +		name = "MetalFX spatial upscaling",
-+		desc = "Upscales the world in Retina text and UI mode, keeping UI sharp. Applies immediately. Has no effect in Standard or Full Retina mode, or on a non-Retina display. Extra graphics transfers may reduce performance; falls back to bilinear if unavailable.",
++		desc = "Upscales the world in Retina text and UI mode, keeping UI sharp. Applies immediately. Has no effect in Standard or Full Retina mode, or on a non-Retina display. May reduce performance. Falls back to bilinear if unavailable.",
 +		type = "bool", noSave = true, simpleMode = true, everyMode = true,
 +		value = Spring.GetConfigInt("MacMetalFXSpatial", 0) == 1,
 +		OnChange = function(self)

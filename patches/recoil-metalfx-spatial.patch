@@ -1,8 +1,8 @@
 diff --git a/rts/Rendering/GL/MacEGLBridge.cpp b/rts/Rendering/GL/MacEGLBridge.cpp
-index a843a7808..a36b54644 100644
+index a843a7808..3136da119 100644
 --- a/rts/Rendering/GL/MacEGLBridge.cpp
 +++ b/rts/Rendering/GL/MacEGLBridge.cpp
-@@ -12,6 +12,7 @@
+@@ -12,16 +12,20 @@
  #include <string>
  #include <mutex>
  #include <cmath>
@@ -10,15 +10,72 @@ index a843a7808..a36b54644 100644
  
  #include <SDL.h>
  
-@@ -22,6 +23,7 @@
+ #include "Rendering/GL/myGL.h"
++#include "Rendering/GlobalRendering.h"
+ #include "System/FileSystem/FileSystem.h"
+ #include "System/Log/ILog.h"
+ #include "System/Platform/Misc.h"
  #include "System/Config/ConfigHandler.h"
  
  CONFIG(int, MacRetinaMode).defaultValue(1).minimumValue(0).maximumValue(2).description("macOS Retina mode: 0=standard, 1=Retina text and UI, 2=Retina text, UI and main game scene. Requires restart.");
-+CONFIG(bool, MacMetalFXSpatial).defaultValue(false).description("Use MetalFX spatial upscaling for the lower-resolution world in Retina text and UI mode. Applies immediately; UI stays native resolution. Adds GPU transfers with the current Mesa bridge.");
++CONFIG(bool, MacMetalFXSpatial).defaultValue(false).description("Use MetalFX spatial upscaling for the lower-resolution world in Retina text and UI mode. Applies immediately; UI stays native resolution. Uses shared GPU textures when available, with a CPU staging compatibility path.");
++CONFIG(bool, MacGPUSharing).defaultValue(false).description("Experimental sharing of bundled Mesa GPU textures with MetalFX and Metal presentation. Applies immediately. Disabled by default while synchronization performance is evaluated.");
  
  // minimal EGL declarations; libEGL is dlopen()ed so there is no build-time dependency on Mesa
  namespace {
-@@ -326,6 +328,10 @@ namespace Retina {
+@@ -75,6 +79,17 @@ namespace {
+ 	SDL_Window* presenterWindow = nullptr;
+ 	bool retinaEnabled = false;
+ 	int retinaMode = 0;
++	bool sharedUpscaleFailed = false;
++	bool sharedPresentFailed = false;
++	bool sharedPresentLogged = false;
++	bool presentedSharedLastFrame = false;
++
++	using GetVkColorBuffer = bool (*)(void**, uint64_t*);
++	using GetMetalTexture = bool (*)(void*, uint64_t, void**, void**);
++	GetVkColorBuffer getVkColorBuffer = nullptr;
++	GetMetalTexture getMetalTexture = nullptr;
++	void* sharedDriver = nullptr;
++	bool sharingChecked = false;
+ 
+ 	constexpr unsigned int NUM_PBOS = 2;
+ 	GLuint pbos[NUM_PBOS] = {};
+@@ -123,6 +138,33 @@ namespace {
+ 		return (egl.GetPlatformDisplayEXT != nullptr && egl.Initialize != nullptr && egl.CreateContext != nullptr && egl.MakeCurrent != nullptr);
+ 	}
+ 
++	bool SharedExportsAvailable() {
++		if (!sharingChecked) {
++			sharingChecked = true;
++			getVkColorBuffer = reinterpret_cast<GetVkColorBuffer>(dlsym(egl.lib, "recoil_mesa_get_vk_color_buffer_v1"));
++			// Only use the ICD already loaded from this same Mesa bundle.
++			sharedDriver = dlopen((MesaLibraryDirectory() + "/libvulkan_kosmickrisp.dylib").c_str(), RTLD_NOW | RTLD_LOCAL | RTLD_NOLOAD);
++			if (sharedDriver)
++				getMetalTexture = reinterpret_cast<GetMetalTexture>(dlsym(sharedDriver, "recoil_kk_get_metal_texture_v1"));
++		}
++		return getVkColorBuffer && getMetalTexture;
++	}
++
++	bool UseSharedGPU() {
++		if (configHandler->GetBool("MacGPUSharing"))
++			return true;
++		sharedUpscaleFailed = sharedPresentFailed = false;
++		sharedPresentLogged = false;
++		return false;
++	}
++
++	// The caller finishes GL first and keeps the allocation alive until Metal completes.
++	bool GetSharedColorBuffer(void*& device, void*& nativeTexture) {
++		void* vkDevice = nullptr;
++		uint64_t image = 0;
++		return getVkColorBuffer(&vkDevice, &image) && getMetalTexture(vkDevice, image, &device, &nativeTexture);
++	}
++
+ 	void SetupEnvironment() {
+ 		setenv("GALLIUM_DRIVER", "zink", 0);
+ 
+@@ -326,6 +368,11 @@ namespace Retina {
  	int logicalX = 1, logicalY = 1;
  	float scaleX = 1.0f, scaleY = 1.0f;
  	bool drawingScene = false;
@@ -26,10 +83,11 @@ index a843a7808..a36b54644 100644
 +	int upscaleX = 0, upscaleY = 0;
 +	std::vector<uint8_t> scenePixels;
 +	bool metalFXFailed = false;
++	bool sharedUpscaleLogged = false, cpuUpscaleLogged = false;
  
  	bool HighDPI() { return retinaEnabled && (scaleX > 1.0f || scaleY > 1.0f); }
  
-@@ -385,6 +391,88 @@ namespace Retina {
+@@ -385,6 +432,140 @@ namespace Retina {
  		sceneX = sceneY = 0;
  	}
  
@@ -40,7 +98,39 @@ index a843a7808..a36b54644 100644
 +		upscaleX = upscaleY = 0;
 +		scenePixels.clear();
 +		metalFXFailed = false;
++		sharedUpscaleFailed = sharedPresentFailed = false;
++		sharedUpscaleLogged = cpuUpscaleLogged = sharedPresentLogged = false;
++		presentedSharedLastFrame = false;
 +		MacMetalFX::Destroy();
++	}
++
++	bool EnsureUpscaleTarget() {
++		GLint previousTexture = 0, unpackBuffer = 0;
++		getIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
++		getIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &unpackBuffer);
++		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
++		if (upscaleFBO == 0) {
++			glGenFramebuffers(1, &upscaleFBO);
++			glGenTextures(1, &upscaleColor);
++		}
++		glBindTexture(GL_TEXTURE_2D, upscaleColor);
++		bool valid = true;
++		if (upscaleX != surfSizeX || upscaleY != surfSizeY) {
++			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
++			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
++			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, surfSizeX, surfSizeY, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
++			bindFramebuffer(GL_READ_FRAMEBUFFER, upscaleFBO);
++			glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, upscaleColor, 0);
++			valid = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
++			if (valid) {
++				upscaleX = surfSizeX; upscaleY = surfSizeY;
++				sharedUpscaleLogged = cpuUpscaleLogged = false;
++			}
++		}
++		bindFramebuffer(GL_READ_FRAMEBUFFER, sceneFBO);
++		glBindTexture(GL_TEXTURE_2D, previousTexture);
++		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, unpackBuffer);
++		return valid;
 +	}
 +
 +	// Called with the scene bound for reading, default framebuffer for drawing,
@@ -52,6 +142,41 @@ index a843a7808..a36b54644 100644
 +		}
 +		if (metalFXFailed)
 +			return false;
++		if (!EnsureUpscaleTarget())
++			return false;
++
++		if (UseSharedGPU() && !sharedUpscaleFailed) {
++			bool success = false;
++			const char* reason = "bundled Mesa export interface unavailable";
++			if (SharedExportsAvailable()) {
++				glFinish();
++				void* device = nullptr;
++				void* source = nullptr;
++				void* outputDevice = nullptr;
++				void* output = nullptr;
++				const bool sourceReady = GetSharedColorBuffer(device, source);
++				bindFramebuffer(GL_READ_FRAMEBUFFER, upscaleFBO);
++				const bool outputReady = GetSharedColorBuffer(outputDevice, output);
++				reason = "scene or output framebuffer is not shareable";
++				if (sourceReady && outputReady && device == outputDevice) {
++					success = MacMetalFX::UpscaleShared(device, source, output);
++					reason = MacMetalFX::GetError();
++				}
++				if (success) {
++					blitFramebuffer(0, 0, surfSizeX, surfSizeY, 0, 0, surfSizeX, surfSizeY, GL_COLOR_BUFFER_BIT, GL_NEAREST);
++				}
++				bindFramebuffer(GL_READ_FRAMEBUFFER, sceneFBO);
++			}
++			if (success) {
++				if (!sharedUpscaleLogged)
++					LOG("[MacMetalFX] spatial upscale %dx%d -> %dx%d; shared GPU textures, native-resolution UI", logicalX, logicalY, surfSizeX, surfSizeY);
++				sharedUpscaleLogged = true;
++				return true;
++			}
++			sharedUpscaleFailed = true;
++			LOG_L(L_WARNING, "[MacGPUSharing] MetalFX sharing unavailable (%s); using CPU staging", reason);
++			MacMetalFX::Destroy();
++		}
 +
 +		// Widgets may leave PBOs and pixel-store offsets bound. Neither transfer
 +		// may inherit those, and all bindings must be restored before UI draws.
@@ -75,29 +200,14 @@ index a843a7808..a36b54644 100644
 +		int outputRowLength = 0;
 +		bool success = MacMetalFX::Upscale(scenePixels.data(), logicalX, logicalY, surfSizeX, surfSizeY, output, outputRowLength);
 +		if (success) {
-+			if (upscaleFBO == 0) {
-+				glGenFramebuffers(1, &upscaleFBO);
-+				glGenTextures(1, &upscaleColor);
-+			}
 +			glBindTexture(GL_TEXTURE_2D, upscaleColor);
-+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-+			if (upscaleX != surfSizeX || upscaleY != surfSizeY) {
-+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, surfSizeX, surfSizeY, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-+				bindFramebuffer(GL_READ_FRAMEBUFFER, upscaleFBO);
-+				glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, upscaleColor, 0);
-+				success = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
-+				if (success) {
-+					upscaleX = surfSizeX; upscaleY = surfSizeY;
-+					LOG("[MacMetalFX] spatial upscale %dx%d -> %dx%d; native-resolution UI", logicalX, logicalY, surfSizeX, surfSizeY);
-+				}
-+			}
-+			if (success) {
-+				glPixelStorei(GL_UNPACK_ROW_LENGTH, outputRowLength);
-+				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surfSizeX, surfSizeY, GL_RGBA, GL_UNSIGNED_BYTE, output);
-+				bindFramebuffer(GL_READ_FRAMEBUFFER, upscaleFBO);
-+				blitFramebuffer(0, 0, surfSizeX, surfSizeY, 0, 0, surfSizeX, surfSizeY, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-+			}
++			glPixelStorei(GL_UNPACK_ROW_LENGTH, outputRowLength);
++			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surfSizeX, surfSizeY, GL_RGBA, GL_UNSIGNED_BYTE, output);
++			bindFramebuffer(GL_READ_FRAMEBUFFER, upscaleFBO);
++			blitFramebuffer(0, 0, surfSizeX, surfSizeY, 0, 0, surfSizeX, surfSizeY, GL_COLOR_BUFFER_BIT, GL_NEAREST);
++			if (!cpuUpscaleLogged)
++				LOG("[MacMetalFX] spatial upscale %dx%d -> %dx%d; CPU staging, native-resolution UI", logicalX, logicalY, surfSizeX, surfSizeY);
++			cpuUpscaleLogged = true;
 +		}
 +		bindFramebuffer(GL_READ_FRAMEBUFFER, sceneFBO);
 +		glBindTexture(GL_TEXTURE_2D, previousTexture);
@@ -118,7 +228,16 @@ index a843a7808..a36b54644 100644
  	bool EnsureScene() {
  		if (sceneFBO != 0 && sceneX == logicalX && sceneY == logicalY)
  			return true;
-@@ -521,7 +609,8 @@ void MacEGLBridge::BeginUI()
+@@ -512,23 +693,23 @@ void MacEGLBridge::BeginScene()
+ void MacEGLBridge::BeginUI()
+ {
+ 	if (context == nullptr || renderer == nullptr) return;
+-	GLint viewport[4] = {}, scissor[4] = {};
+-	glGetIntegerv(GL_VIEWPORT, viewport);
+-	glGetIntegerv(GL_SCISSOR_BOX, scissor);
+ 	Retina::UpdateSurface();
+ 	if (Retina::drawingScene) {
+ 		const bool clipped = glIsEnabled(GL_SCISSOR_TEST);
  		glDisable(GL_SCISSOR_TEST);
  		Retina::bindFramebuffer(GL_READ_FRAMEBUFFER, Retina::sceneFBO);
  		Retina::bindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
@@ -128,7 +247,18 @@ index a843a7808..a36b54644 100644
  		Retina::blitFramebuffer(0, 0, Retina::logicalX, Retina::logicalY, 0, 0, surfSizeX, surfSizeY, GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT, GL_NEAREST);
  		if (clipped) glEnable(GL_SCISSOR_TEST);
  	}
-@@ -625,6 +714,7 @@ void MacEGLBridge::DestroyContext()
+ 	Retina::drawingScene = false;
+ 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+-	glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+-	glScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
++	// World and offscreen passes can leave a smaller viewport. UI always starts
++	// with logical screen bounds, then the GL wrappers apply the backing scale.
++	glViewport(globalRendering->viewPosX, globalRendering->viewPosY, globalRendering->viewSizeX, globalRendering->viewSizeY);
++	glScissor(globalRendering->viewPosX, globalRendering->viewPosY, globalRendering->viewSizeX, globalRendering->viewSizeY);
+ }
+ 
+ 
+@@ -625,6 +806,7 @@ void MacEGLBridge::DestroyContext()
  	egl.MakeCurrent(display, surface, surface, context);
  	Retina::drawingScene = false;
  	Retina::DestroyScene();
@@ -136,11 +266,82 @@ index a843a7808..a36b54644 100644
  	for (unsigned int i = 0; i < NUM_PBOS; i++) {
  		if (fences[i] != nullptr)
  			glDeleteSync(fences[i]);
+@@ -663,6 +845,51 @@ void MacEGLBridge::SwapWindow(SDL_Window* window)
+ 	if (context == nullptr || renderer == nullptr)
+ 		return;
+ 
++	if (UseSharedGPU() && !sharedPresentFailed) {
++		GLint previousReadFBO = 0;
++		Retina::getIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previousReadFBO);
++		Retina::bindFramebuffer(GL_READ_FRAMEBUFFER, 0);
++		GLint previousReadBuffer = GL_BACK;
++		Retina::getIntegerv(GL_READ_BUFFER, &previousReadBuffer);
++		glReadBuffer(GL_BACK);
++		bool success = false;
++		const char* reason = "bundled Mesa export interface unavailable";
++		if (SharedExportsAvailable()) {
++			glFinish();
++			void* device = nullptr;
++			void* source = nullptr;
++			reason = "presentation framebuffer is not shareable";
++			if (GetSharedColorBuffer(device, source)) {
++				success = MacMetalFX::PresentShared(device, source, SDL_RenderGetMetalLayer(renderer));
++				reason = MacMetalFX::GetError();
++			}
++		}
++		glReadBuffer(previousReadBuffer);
++		Retina::bindFramebuffer(GL_READ_FRAMEBUFFER, previousReadFBO);
++		if (success) {
++			if (!sharedPresentLogged)
++				LOG("[MacGPUSharing] presenting shared GPU texture; no final-frame CPU readback");
++			sharedPresentLogged = true;
++			presentedSharedLastFrame = true;
++			Retina::UpdateSurface();
++			return;
++		}
++		sharedPresentFailed = true;
++		LOG_L(L_WARNING, "[MacGPUSharing] shared presentation unavailable (%s); using PBO readback", reason);
++	}
++	if (presentedSharedLastFrame) {
++		// Discard frames queued before sharing was enabled, rather than showing stale images.
++		for (unsigned int i = 0; i < NUM_PBOS; ++i) {
++			if (fences[i]) glDeleteSync(fences[i]);
++			fences[i] = nullptr;
++			pboSizes[i][0] = pboSizes[i][1] = 0;
++		}
++		if (texture) SDL_DestroyTexture(texture);
++		texture = nullptr;
++		texSizeX = texSizeY = 0;
++		frameIdx = 0;
++		presentedSharedLastFrame = false;
++	}
+ 
+ 	GLint prevPackBuf = 0, prevReadFBO = 0, prevAlign = 4, prevRowLen = 0, prevReadBuf = GL_BACK;
+ 	glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &prevPackBuf);
 diff --git a/rts/Rendering/GL/MacEGLBridge.h b/rts/Rendering/GL/MacEGLBridge.h
-index 55bee80dc..c83896dcb 100644
+index 55bee80dc..a8ca57fd8 100644
 --- a/rts/Rendering/GL/MacEGLBridge.h
 +++ b/rts/Rendering/GL/MacEGLBridge.h
-@@ -32,4 +32,11 @@ namespace MacEGLBridge {
+@@ -2,7 +2,8 @@
+ 
+ #pragma once
+ 
+-// Renders through Mesa EGL + Zink into a pbuffer and presents it via SDL_Renderer.
++// Renders through Mesa EGL + Zink and presents shared GPU textures through Metal.
++// Unpatched graphics libraries retain the SDL readback compatibility path.
+ 
+ #if defined(__APPLE__) && defined(MAC_EGL_ZINK) && !defined(HEADLESS)
+ 	#define MAC_EGL_BRIDGE_AVAILABLE 1
+@@ -20,7 +21,7 @@ namespace MacEGLBridge {
+ 	void DestroyContext();
+ 	void* GetProcAddress(const char* name);
+ 
+-	// reads back the pbuffer and presents it; resizes the pbuffer to track the window
++	// presents the pbuffer and resizes it to track the window
+ 	void SwapWindow(SDL_Window* window);
+ 	void SetSwapInterval(int interval);
+ 
+@@ -32,4 +33,14 @@ namespace MacEGLBridge {
  	void ScaleSceneSize(int& width, int& height);
  	void CopyToTexturePixels(unsigned int target, int level, int xoff, int yoff, int x, int y, int width, int height);
  }
@@ -148,12 +349,15 @@ index 55bee80dc..c83896dcb 100644
 +// Objective-C++ boundary: the engine uses GCC, MetalFX uses Apple's compiler.
 +namespace MacMetalFX {
 +	bool Upscale(const void* rgba, int width, int height, int outputWidth, int outputHeight, const void*& output, int& outputRowLength);
++	// Borrowed Mesa resources are used only until this call completes its GPU work.
++	bool UpscaleShared(void* device, void* input, void* output);
++	bool PresentShared(void* device, void* input, void* layer);
 +	const char* GetError();
 +	void Destroy();
 +}
  #endif
 diff --git a/rts/builds/legacy/CMakeLists.txt b/rts/builds/legacy/CMakeLists.txt
-index 2c39aaae9..d776cd160 100644
+index 2c39aaae9..c9ed0c68c 100644
 --- a/rts/builds/legacy/CMakeLists.txt
 +++ b/rts/builds/legacy/CMakeLists.txt
 @@ -86,6 +86,18 @@ include_directories(${engineIncludes})
@@ -170,17 +374,17 @@ index 2c39aaae9..d776cd160 100644
 +		DEPENDS "${metalfx_source}" "${ENGINE_SRC_ROOT_DIR}/Rendering/GL/MacEGLBridge.h"
 +		VERBATIM)
 +	target_sources(engine-legacy PRIVATE "${metalfx_object}")
-+	target_link_libraries(engine-legacy "-framework Metal" "-framework MetalFX")
++	target_link_libraries(engine-legacy "-framework Metal" "-framework MetalFX" "-framework QuartzCore")
 +endif ()
  target_link_libraries(engine-legacy ${engineLibraries} Game)
  
  # Export symbols for plugin access (replaces CMP0065 OLD behavior)
 diff --git a/rts/Rendering/GL/MacMetalFX.mm b/rts/Rendering/GL/MacMetalFX.mm
 new file mode 100644
-index 000000000..e234c23c2
+index 000000000..c22294e75
 --- /dev/null
 +++ b/rts/Rendering/GL/MacMetalFX.mm
-@@ -0,0 +1,114 @@
+@@ -0,0 +1,304 @@
 +/* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
 +// MetalFX spatial integration assisted by OpenAI Codex.
 +
@@ -188,6 +392,7 @@ index 000000000..e234c23c2
 +
 +#import <Metal/Metal.h>
 +#import <MetalFX/MetalFX.h>
++#import <QuartzCore/CAMetalLayer.h>
 +
 +namespace MacMetalFX {
 +namespace {
@@ -198,6 +403,52 @@ index 000000000..e234c23c2
 +	id<MTLTexture> outputTexture;
 +	id<MTLBuffer> readback;
 +	NSString* errorMessage;
++	id<MTLDevice> sharedDevice;
++	id<MTLCommandQueue> sharedQueue;
++	id<MTLFXSpatialScaler> sharedScaler;
++	id<MTLTexture> sharedOutput;
++	id<MTLRenderPipelineState> presentPipeline;
++	MTLPixelFormat presentFormat = MTLPixelFormatInvalid;
++
++	bool PrepareSharedDevice(void* handle)
++	{
++		id<MTLDevice> next = (__bridge id<MTLDevice>)handle;
++		if (!next)
++			return false;
++		if (next != sharedDevice) {
++			sharedScaler = nil;
++			sharedOutput = nil;
++			presentPipeline = nil;
++			sharedDevice = next;
++			sharedQueue = [next newCommandQueue];
++		}
++		return sharedQueue != nil;
++	}
++
++	id<MTLTexture> Texture2D(void* handle)
++	{
++		id<MTLTexture> texture = (__bridge id<MTLTexture>)handle;
++		if (!texture || texture.device != sharedDevice || texture.sampleCount != 1)
++			return nil;
++		if (texture.textureType == MTLTextureType2D)
++			return texture;
++		// KosmicKrisp uses one-layer arrays for input attachments.
++		if (texture.textureType == MTLTextureType2DArray && texture.arrayLength == 1)
++			return [texture newTextureViewWithPixelFormat:texture.pixelFormat textureType:MTLTextureType2D
++				levels:NSMakeRange(0, 1) slices:NSMakeRange(0, 1)];
++		return nil;
++	}
++
++	bool Complete(id<MTLCommandBuffer> commands)
++	{
++		[commands commit];
++		[commands waitUntilCompleted];
++		if (commands.status != MTLCommandBufferStatusCompleted) {
++			errorMessage = commands.error.localizedDescription ?: @"shared GPU command failed";
++			return false;
++		}
++		return true;
++	}
 +}
 +
 +const char* GetError()
@@ -214,6 +465,149 @@ index 000000000..e234c23c2
 +	queue = nil;
 +	device = nil;
 +	errorMessage = nil;
++	sharedScaler = nil;
++	sharedOutput = nil;
++	presentPipeline = nil;
++	sharedQueue = nil;
++	sharedDevice = nil;
++	presentFormat = MTLPixelFormatInvalid;
++}
++
++bool UpscaleShared(void* deviceHandle, void* inputHandle, void* outputHandle)
++{
++	@autoreleasepool {
++		if (!PrepareSharedDevice(deviceHandle))
++			return false;
++		id<MTLTexture> source = Texture2D(inputHandle);
++		id<MTLTexture> destination = Texture2D(outputHandle);
++		if (!source || !destination ||
++			destination.width < source.width || destination.height < source.height ||
++			![MTLFXSpatialScalerDescriptor supportsDevice:sharedDevice]) {
++			errorMessage = @"Mesa textures are incompatible with MetalFX spatial scaling";
++			return false;
++		}
++		if (!sharedScaler || sharedScaler.inputWidth != source.width || sharedScaler.inputHeight != source.height ||
++			sharedScaler.outputWidth != destination.width || sharedScaler.outputHeight != destination.height ||
++			sharedScaler.colorTextureFormat != source.pixelFormat || sharedScaler.outputTextureFormat != destination.pixelFormat) {
++			MTLFXSpatialScalerDescriptor* descriptor = [MTLFXSpatialScalerDescriptor new];
++			descriptor.inputWidth = source.width;
++			descriptor.inputHeight = source.height;
++			descriptor.outputWidth = destination.width;
++			descriptor.outputHeight = destination.height;
++			descriptor.colorTextureFormat = source.pixelFormat;
++			descriptor.outputTextureFormat = destination.pixelFormat;
++			descriptor.colorProcessingMode = MTLFXSpatialScalerColorProcessingModePerceptual;
++			sharedScaler = [descriptor newSpatialScalerWithDevice:sharedDevice];
++			sharedOutput = nil;
++		}
++		if (!sharedScaler)
++			return false;
++		id<MTLTexture> scalerOutput = destination;
++		if (destination.storageMode != MTLStorageModePrivate) {
++			// MetalFX requires private output; KosmicKrisp currently allocates shared heaps.
++			// Copy on the GPU into GL's destination after scaling, without CPU staging.
++			if (!sharedOutput) {
++				MTLTextureDescriptor* descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:
++					destination.pixelFormat width:destination.width height:destination.height mipmapped:NO];
++				descriptor.storageMode = MTLStorageModePrivate;
++				descriptor.usage = sharedScaler.outputTextureUsage;
++				sharedOutput = [sharedDevice newTextureWithDescriptor:descriptor];
++			}
++			scalerOutput = sharedOutput;
++		}
++		if (!scalerOutput || (source.usage & sharedScaler.colorTextureUsage) != sharedScaler.colorTextureUsage ||
++			(scalerOutput.usage & sharedScaler.outputTextureUsage) != sharedScaler.outputTextureUsage) {
++			errorMessage = @"Mesa textures do not provide the usage required by MetalFX";
++			return false;
++		}
++		id<MTLCommandBuffer> commands = [sharedQueue commandBuffer];
++		if (!commands)
++			return false;
++		sharedScaler.colorTexture = source;
++		sharedScaler.outputTexture = scalerOutput;
++		sharedScaler.inputContentWidth = source.width;
++		sharedScaler.inputContentHeight = source.height;
++		[sharedScaler encodeToCommandBuffer:commands];
++		if (scalerOutput != destination) {
++			id<MTLBlitCommandEncoder> blit = [commands blitCommandEncoder];
++			if (!blit)
++				return false;
++			[blit copyFromTexture:scalerOutput sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0)
++				sourceSize:MTLSizeMake(destination.width, destination.height, 1) toTexture:destination
++				destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
++			[blit endEncoding];
++		}
++		const bool success = Complete(commands);
++		// Do not retain borrowed GL allocations across resize or context destruction.
++		sharedScaler.colorTexture = nil;
++		sharedScaler.outputTexture = nil;
++		return success;
++	}
++}
++
++bool PresentShared(void* deviceHandle, void* inputHandle, void* layerHandle)
++{
++	@autoreleasepool {
++		if (!PrepareSharedDevice(deviceHandle))
++			return false;
++		id<MTLTexture> source = Texture2D(inputHandle);
++		CAMetalLayer* layer = (__bridge CAMetalLayer*)layerHandle;
++		if (!source || !layer || layer.device != sharedDevice || !(source.usage & MTLTextureUsageShaderRead)) {
++			errorMessage = @"Mesa texture and SDL Metal layer cannot share a device";
++			return false;
++		}
++		if (!presentPipeline || presentFormat != layer.pixelFormat) {
++			NSString* shader = @R"(
++#include <metal_stdlib>
++using namespace metal;
++struct Vertex { float4 position [[position]]; float2 uv; };
++vertex Vertex presentVertex(uint index [[vertex_id]]) {
++    const float2 points[3] = {float2(-1, -1), float2(3, -1), float2(-1, 3)};
++    Vertex result;
++    result.position = float4(points[index], 0, 1);
++    result.uv = float2(points[index].x * 0.5 + 0.5, 0.5 - points[index].y * 0.5);
++    return result;
++}
++fragment float4 presentFragment(Vertex interpolated [[stage_in]], texture2d<float> color [[texture(0)]]) {
++    constexpr sampler sampleColor(filter::linear, address::clamp_to_edge);
++    return float4(color.sample(sampleColor, interpolated.uv).rgb, 1);
++}
++)";
++			NSError* error = nil;
++			id<MTLLibrary> library = [sharedDevice newLibraryWithSource:shader options:nil error:&error];
++			MTLRenderPipelineDescriptor* descriptor = [MTLRenderPipelineDescriptor new];
++			descriptor.vertexFunction = [library newFunctionWithName:@"presentVertex"];
++			descriptor.fragmentFunction = [library newFunctionWithName:@"presentFragment"];
++			descriptor.colorAttachments[0].pixelFormat = layer.pixelFormat;
++			if (library)
++				presentPipeline = [sharedDevice newRenderPipelineStateWithDescriptor:descriptor error:&error];
++			if (!presentPipeline) {
++				errorMessage = error.localizedDescription ?: @"could not create shared presentation pipeline";
++				return false;
++			}
++			presentFormat = layer.pixelFormat;
++		}
++		id<CAMetalDrawable> drawable = [layer nextDrawable];
++		if (!drawable)
++			return true; // Minimized or occluded windows may not have a drawable.
++		id<MTLCommandBuffer> commands = [sharedQueue commandBuffer];
++		if (!commands)
++			return false;
++		MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
++		pass.colorAttachments[0].texture = drawable.texture;
++		pass.colorAttachments[0].loadAction = MTLLoadActionDontCare;
++		pass.colorAttachments[0].storeAction = MTLStoreActionStore;
++		id<MTLRenderCommandEncoder> encoder = [commands renderCommandEncoderWithDescriptor:pass];
++		if (!encoder)
++			return false;
++		[encoder setRenderPipelineState:presentPipeline];
++		[encoder setFragmentTexture:source atIndex:0];
++		[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
++		[encoder endEncoding];
++		[commands presentDrawable:drawable];
++		// GL may overwrite the same pbuffer on the next frame.
++		return Complete(commands);
++	}
 +}
 +
 +bool Upscale(const void* rgba, int width, int height, int outputWidth, int outputHeight, const void*& output, int& outputRowLength)

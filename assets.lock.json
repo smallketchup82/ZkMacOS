@@ -18,7 +18,10 @@
     "file": "mesa-26.3.0-rc1.tar.xz",
     "extract": null,
     "kind": "file",
-    "sha256": "63327d58a51d189c1d1600746c505609bba5c495123b4e51de4e0c038b745542"
+    "sha256": "63327d58a51d189c1d1600746c505609bba5c495123b4e51de4e0c038b745542",
+    "patches": {
+      "mesa-gpu-sharing.patch": "2fb3a4da15074d0bd0c6180a56ee9eab948b6d508714d5827ea7ec53afab4ad0"
+    }
   },
   "libclc": {
     "url": "https://gitlab.freedesktop.org/karolherbst/mesa-libclc/-/archive/22.1.8.3/mesa-libclc-22.1.8.3.tar.bz2",
