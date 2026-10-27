@@ -121,8 +121,9 @@ See [distribution and macOS approval](docs/DISTRIBUTION.md) for more detail.
 ### In-app updates
 
 Sparkle checks for stable releases in the background and provides a native
-update window to download, verify, and install them. Use the **ZK** menu in
-the macOS menu bar for **Check for Updates…** or to toggle **Check Automatically**.
+update window to download, verify, and install them. Choose **Zero-K → Check for
+Updates…** in the application menu. The **ZK** menu on the right side of the macOS
+menu bar also offers **Check for Updates…** and **Check Automatically**.
 Automatic checks are enabled by default; unattended installation is off by
 default. Checks follow Sparkle's schedule rather than running on every launch.
 
@@ -378,6 +379,11 @@ swiftc -D UPDATE_CHECK_TESTS -framework AppKit -F .cache/sparkle-2.10.1 -framewo
   -Xlinker -rpath -Xlinker "$PWD/.cache/sparkle-2.10.1" \
   app/main.swift tests/check-updates.swift -o build/check-updates
 build/check-updates
+clang++ -std=c++17 -fblocks -framework AppKit -I external/recoil/rts \
+  $(sdl2-config --cflags) tests/check-update-menu.mm \
+  external/recoil/rts/System/Platform/Mac/WindowManagerHelper.cpp \
+  $(sdl2-config --libs) -o build/check-update-menu
+build/check-update-menu
 uv run --python python3 scripts/audit-app.py
 uv run --python python3 scripts/smoke-app.py --seconds 90
 uv run --python python3 scripts/smoke-download.py

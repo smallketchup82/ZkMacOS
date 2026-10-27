@@ -6,6 +6,7 @@ import Sparkle
 // The engine owns the Dock entry. This delegate keeps the hidden bootstrap alive
 // until all bundled game processes exit, including an engine orphaned by a helper.
 final class LauncherDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
+    let updateRequestID = UUID().uuidString
     var updatesEnabled = true
     var process: Process?
     var childStatus: Int32 = 0
@@ -36,6 +37,9 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegat
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard updatesEnabled, Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") != nil else { return }
+        DistributedNotificationCenter.default().addObserver(
+            self, selector: #selector(checkForUpdatesFromGame(_:)),
+            name: Notification.Name("org.zerok.macos.checkForUpdates"), object: updateRequestID)
         let menu = NSMenu()
         let check = menu.addItem(withTitle: "Check for Updates…",
                                  action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)), keyEquivalent: "")
@@ -49,6 +53,10 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegat
         statusItem?.button?.toolTip = "Zero-K Updates"
         statusItem?.menu = menu
         updaterController.startUpdater()
+    }
+
+    @objc func checkForUpdatesFromGame(_ notification: Notification) {
+        updaterController.checkForUpdates(nil)
     }
 
     @objc func toggleAutomaticChecks(_ sender: NSMenuItem) {
@@ -195,6 +203,9 @@ do {
     if !engineOnly { try showStartupWarning(in: data) }
     let helper = client.appendingPathComponent("Zero-K-Helper")
     let delegate = LauncherDelegate()
+    if !engineOnly, Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") != nil {
+        environment["ZEROK_UPDATE_REQUEST_ID"] = delegate.updateRequestID
+    }
     let process = Process()
     delegate.process = process
     process.terminationHandler = { finished in
