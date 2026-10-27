@@ -6,7 +6,8 @@
     "upstream_base": "de69361239d8c8b1012dba3f5aa3122954ea4da3",
     "circuitai_patch_sha256": "d735584e956555895756ae2d6cc542e40f5433398f0eff7fdc6d0cc0a47970ea",
     "patches": {
-      "recoil-metalfx-spatial.patch": "037e24b3848151ca6eec30682bae74fca0b2b13008211407ea86ddd7ece70586"
+      "recoil-metalfx-spatial.patch": "037e24b3848151ca6eec30682bae74fca0b2b13008211407ea86ddd7ece70586",
+      "recoil-macos-fullscreen.patch": "a9ddc3ad5ec223846146e7711463eeb3658820a7a2da91bab23f32a7eed186a5"
     }
   },
   "chobby": {
