@@ -147,18 +147,12 @@ jobs:
           cat > build/release-notes.md <<'EOF'
           Unofficial, experimental Zero-K client for Apple Silicon Macs running macOS 26 or newer.
 
-          Download the DMG and its SHA256 checksum. Drag Zero-K into Applications; see the repository README for macOS approval instructions. The app is ad-hoc signed and is not notarized. Settings and downloaded content remain in Application Support.
-
-          Includes optional MetalFX spatial upscaling, configurable in lobby Graphics settings, in-game Display settings, or springsettings.cfg. It is disabled by default and works with Retina text and UI mode. Its extra graphics transfers may reduce FPS.
-
-          This automated build passes settings tests and the bundle audit. CI does not establish multiplayer synchronization, GPU rendering correctness, or long-session stability. Report port bugs in this repository, not to the official Zero-K developers.
-
-          Source pins and native dependency metadata are attached. OpenAI Codex assisted with this port and its release tooling.
+          Download the DMG and drag `Zero-K.app` into `Applications`; see the repository README for macOS approval instructions and alternate installation methods.
           EOF
           printf '\nSource commit: %s\n' "$GITHUB_SHA" >> build/release-notes.md
           gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "ZkMacOS $RELEASE_TAG" --draft --generate-notes --notes-file build/release-notes.md \
-            dist/Zero-K-macOS-arm64.dmg dist/Zero-K-macOS-arm64.dmg.sha256 dist/*.json
+            dist/Zero-K-macOS-arm64.dmg dist/Zero-K-macOS-arm64.dmg.sha256
           gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
           printf '\n[Download release](https://github.com/%s/releases/tag/%s)\n' "$GITHUB_REPOSITORY" "$RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"
       - name: Save compiler results even after a later failure
