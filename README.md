@@ -2,7 +2,7 @@
 
 > 1. **DO NOT send ZkMacOS bug reports to the official Zero-K developers. [File issues in this repository](https://github.com/smallketchup82/ZkMacOS/issues) instead.**
 > 2. **ZkMacOS is a third-party client. It is not endorsed by or officially supported by the Zero-K developers.**
-> 3. **This port is built on experimental technology and has not been thoroughly tested. AI/vibe-coding aside, bugs and breakage are to be expected. Understand that risk before putting Elo on the line in a ranked game. If you choose to play using ZkMacOS and your client crashes during a game, that is entirely your fault. You accept responsibility for the resulting loss or rating change.**
+> 3. **This port is built on experimental technology and has not been thoroughly tested. Bugs and breakage are to be expected. Understand that risk before putting Elo on the line in a ranked game. If you choose to play using ZkMacOS and your client crashes during a game, that is entirely your fault. You accept responsibility for the resulting loss or rating change.**
 
 # ZkMacOS
 
