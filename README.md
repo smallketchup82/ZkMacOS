@@ -38,10 +38,51 @@ See [known limitations and remaining testing](docs/TODO.md).
 - Internet access to download the Zero-K game and maps, and for online play.
 - Steam installed and running **only if you want Steam login**.
 
-You do not need developer tools, Homebrew, Mono, .NET, Wine, or Rosetta to run
-a prebuilt app.
+You do not need developer tools, Mono, .NET, Wine, or Rosetta to run a prebuilt
+app. Homebrew is needed only for Method 1.
 
-### Install a prebuilt DMG
+### Method 1: Homebrew (recommended)
+
+Install [Homebrew](https://brew.sh/) if you do not have it, then add this
+repository as a tap and install the cask:
+
+```sh
+brew tap smallketchup82/zkmacos https://github.com/smallketchup82/ZkMacOS.git
+brew install --cask smallketchup82/zkmacos/zkmacos
+```
+
+Open **Zero-K.app** from Applications. You may still need to approve the app
+in macOS using the instructions below.
+
+**Availability:** the cask is generated when the first non-prerelease GitHub
+release containing the DMG and its checksum is published. Until that release
+and the **Update Homebrew cask** workflow succeed, the installation command
+will not find a cask. Check
+[Releases](https://github.com/smallketchup82/ZkMacOS/releases) for availability;
+if none are published, use a trusted shared DMG or build locally.
+
+For subsequent releases, quit Zero-K, then run:
+
+```sh
+brew update
+brew upgrade --cask smallketchup82/zkmacos/zkmacos
+```
+
+The release workflow updates the tap's version and checksum automatically;
+Homebrew then downloads and replaces the app when you upgrade. It does not
+silently update a running game. Your Application Support data is preserved.
+
+If you installed manually before, move the old `Zero-K.app` out of Applications
+before installing the cask, so Homebrew can manage its own copy. Keep your
+Application Support folder. To remove the Homebrew-managed app later:
+
+```sh
+brew uninstall --cask smallketchup82/zkmacos/zkmacos
+```
+
+Uninstalling the cask also leaves your Application Support data in place.
+
+### Method 2: Manual
 
 1. Open [ZkMacOS Releases](https://github.com/smallketchup82/ZkMacOS/releases)
    and download `Zero-K-macOS-arm64.dmg` from a release with a binary attached.
@@ -77,7 +118,7 @@ xattr -dr com.apple.quarantine "/Applications/Zero-K.app"
 
 See [distribution and macOS approval](docs/DISTRIBUTION.md) for more detail.
 
-### Updating
+### Updating a manual installation
 
 Quit Zero-K completely, then replace the app in Applications with the new one
 from the DMG. Your downloaded content and saved preferences remain in
@@ -250,6 +291,7 @@ pins. Source preparation preserves local checkout changes.
 luajit tests/check-settings.lua
 luajit tests/check-display-sync.lua
 luajit tests/check-trackpad-settings.lua
+uv run --python python3 tests/check-cask.py
 uv run --python python3 scripts/audit-app.py
 uv run --python python3 scripts/smoke-app.py --seconds 90
 uv run --python python3 scripts/smoke-download.py
@@ -303,11 +345,37 @@ and where its changes now live.
    dist/Zero-K-macOS-arm64.dmg.sha256
    ```
 
-5. Publish those two files in a GitHub release, with the matching source
-   revisions, patches, build instructions, and third-party notices. The app
+5. Create a release tag using `vMAJOR.MINOR.PATCH` (for example `v0.1.0`).
+   Attach both files to a **draft** GitHub release before publishing it.
+   Publish it as a non-prerelease to update the Homebrew channel, with the
+   matching source revisions, patches, build instructions, and third-party
+   notices. The app
    should contain only static resources; never copy your Application Support
    profile into it. These builds use ad-hoc signing without a developer
    certificate or notarization.
+
+The **Update Homebrew cask** workflow downloads the published DMG and checksum,
+verifies them, generates `Casks/zkmacos.rb` with an exact versioned URL and
+SHA256, and commits it to `main`. This repository doubles as the tap, so a
+separate `homebrew-*` repository or cross-repository token is not required.
+The cask requires Apple Silicon and macOS 26+, installs `Zero-K.app`, and leaves
+Application Support data untouched during upgrades and uninstallations.
+
+Drafts and prereleases do not update the cask. An older release cannot downgrade
+it, and a changed binary under an existing version is rejected: publish a new
+version instead. If publishing happened before both assets were attached,
+upload the missing assets and run **Actions → Update Homebrew cask → Run
+workflow**, supplying the release tag. You can also prepare the cask locally
+with an authenticated GitHub CLI:
+
+```sh
+uv run --python python3 scripts/update-cask.py --tag v0.1.0
+```
+
+GitHub Actions needs permission to write repository contents and push the cask
+commit to `main`. If branch rules prevent that push, commit the generated cask
+through your normal review process instead. The cask becomes available to
+players after its commit reaches `main` and their tap is refreshed.
 
 The inputs are version-pinned; byte-for-byte identical DMGs are not currently
 claimed. See [distribution details](docs/DISTRIBUTION.md) for the trust process

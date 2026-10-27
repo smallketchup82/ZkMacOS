@@ -3,12 +3,20 @@
 The output is `dist/Zero-K.app`, for Apple Silicon Macs running macOS 26 or
 newer. KosmicKrisp uses Metal 4. The app bundles its ARM64 engine, native Steam
 helper, .NET runtime, graphics libraries, fonts, AI and lobby resources. End
-users do not need Homebrew, Mono, .NET or Rosetta installed.
+users do not need Mono, .NET or Rosetta installed. Homebrew is needed only for
+the cask installation method.
 
 Maps and the Zero-K game are downloaded into Application Support as needed.
 Steam sign-in requires the ordinary Steam client to be installed and running;
 ordinary Zero-K account/offline play does not require Steam. No Steam account
 or client installation is copied into the application.
+
+Published DMGs can be installed manually or through this repository's Homebrew
+tap. Publishing a non-prerelease GitHub release with the DMG and its checksum
+triggers `.github/workflows/update-homebrew.yml`, which verifies the download
+and commits a versioned cask. See the README for installation, upgrade commands,
+and the first-release setup. Homebrew upgrades replace the app and preserve
+Application Support; there is no silent in-app updater.
 
 The owner intentionally distributes without Developer ID or notarization.
 Build scripts apply only ad-hoc signatures after relocating native code.
