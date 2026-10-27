@@ -6,11 +6,14 @@ mkdir -p build/logs
 export UV_CACHE_DIR="$ROOT/build/uv-cache"
 export DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
 export DOTNET_NOLOGO=1
+export PKG_CONFIG="${PKG_CONFIG:-$(brew --prefix)/bin/pkg-config}"
 
 uv run --no-project --python python3 python scripts/fetch-sources.py
 uv run --no-project --python python3 python scripts/fetch-assets.py
 ENGINE_VERSION="$(uv run --no-project --python python3 python -c 'import json; print(json.load(open("sources.lock.json"))["recoil"]["engine_version"])')"
-if [ ! -f build/mesa/lib/libEGL.1.dylib ]; then
+MESA_CONFIGURATION="$(shasum -a 256 "$ROOT/assets.lock.json" "$ROOT/scripts/build-mesa.sh" "$ROOT/patches/mesa-gpu-sharing.patch" | shasum -a 256)"
+if [ ! -f build/mesa/lib/libEGL.1.dylib ] || \
+	[ "$(cat build/mesa/.zk-build-inputs.sha256 2>/dev/null || true)" != "$MESA_CONFIGURATION" ]; then
 	mkdir -p build/mesa-work
 	cp .cache/mesa-26.3.0-rc1.tar.xz build/mesa-work/mesa-26.3.0-rc1.tar
 	cp .cache/mesa-libclc-22.1.8.3.tar.bz2 build/mesa-work/

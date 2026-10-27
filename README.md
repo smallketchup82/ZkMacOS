@@ -219,8 +219,10 @@ Retina display; text and UI still draw at native resolution. Standard and Full
 Retina modes do not use it. If MetalFX is unavailable or fails, the engine logs
 the reason and uses the existing bilinear scaling.
 
-MetalFX is off by default. The current Mesa bridge needs extra readback and
-upload transfers to upscale before drawing UI, so enabling it may reduce FPS.
+MetalFX is off by default. The bundled Mesa bridge can share GPU textures with
+MetalFX and present the finished frame directly through Metal. This experimental
+path is opt-in and still incurs synchronization costs. See
+[validation and measurements](docs/METALFX.md).
 To configure it manually, quit Zero-K and set these values in
 `~/Library/Application Support/Zero-K/springsettings.cfg`:
 
@@ -231,6 +233,12 @@ MacMetalFXSpatial = 1
 
 Set `MacMetalFXSpatial = 0` to disable it. The lobby reads this shared engine
 setting, so an older saved lobby selection does not override manual edits.
+
+Set `MacGPUSharing = 1` in `springsettings.cfg` to test GPU sharing in any display
+mode. It is disabled by default. Set it back to `0` to use the CPU staging
+compatibility path. Older or incompatible Mesa libraries fall back
+automatically and log a `[MacGPUSharing]` warning. That fallback can cost more
+bandwidth and GPU/CPU synchronization time.
 
 Toggle **Show native FPS counter** in the same in-game Display menu, or use
 `/fps`. It displays FPS, average frame interval, and the current Retina mode,
