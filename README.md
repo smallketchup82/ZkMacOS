@@ -1,100 +1,250 @@
+# ⚠️ READ BEFORE PLAYING: UNOFFICIAL, EXPERIMENTAL CLIENT
+
+> 1. **DO NOT send ZkMacOS bug reports to the official Zero-K developers. [File issues in this repository](https://github.com/smallketchup82/ZkMacOS/issues) instead.**
+> 2. **ZkMacOS is a third-party client. It is not endorsed by or officially supported by the Zero-K developers.**
+> 3. **This port is built on experimental technology and has not been thoroughly tested. AI/vibe-coding aside, bugs and breakage are to be expected. Understand that risk before putting Elo on the line in a ranked game. If you choose to play using ZkMacOS and your client crashes during a game, that is entirely your fault. You accept responsibility for the resulting loss or rating change.**
+
 # ZkMacOS
 
-An unofficial native Apple Silicon macOS build of Zero-K, with its own Chobby
-and Recoil forks. Requires **macOS 26 or newer**: the current Mesa KosmicKrisp
-renderer uses Metal 4.
+Play [Zero-K](https://zero-k.info/) on Apple Silicon Macs with GPU acceleration,
+native trackpad gestures, and crisp Retina text. ZkMacOS packages custom Recoil,
+Chobby, and launcher builds into a self-contained `Zero-K.app`.
 
-The final app includes the ARM64 engine, Steam helper, .NET runtime, renderer,
-fonts and AI. Players do not need Homebrew, Mono, .NET or Rosetta. Steam login
-uses the player's installed Steam client; ordinary account/offline play is
-also available.
+## What this adds to Zero-K
 
-## Build
+| Feature | What you get |
+| --- | --- |
+| Native Apple Silicon support | ARM64 engine, AI, and launcher helper. No Wine, Rosetta, Mono, or separately installed .NET runtime needed to play. |
+| GPU acceleration on macOS | An experimental Mesa graphics stack runs the engine's OpenGL rendering through Zink and KosmicKrisp to Metal 4, rather than software rendering. |
+| Trackpad camera controls | Two-finger pan, pinch zoom, Option + two-finger tilt, and optional three-finger tilt, with sensitivity and momentum settings. |
+| Retina rendering modes | Choose standard resolution, crisp text and UI with a lower-resolution world, or full-resolution Retina rendering. |
+| Native performance display | An FPS counter showing frame interval and the active Retina mode. |
+| macOS application packaging | A drag-to-install DMG, a self-contained app with the Zero-K icon, and writable data kept in Application Support. |
+| Native Steam login integration | A bundled ARM64 helper connects the lobby to your installed Steam client. Ordinary account login and offline play are also available. |
+| macOS graphics and input fixes | Changes for water rendering, reflections, Retina sizing, window behavior, and trackpad input in the custom engine and lobby. |
 
-Developers need Xcode/its command-line tools and the dependencies in `Brewfile`:
+This keeps Zero-K's own Chobby lobby, multiplayer, spectating, downloads, and AI
+skirmishes. Those are existing Zero-K features; this project makes them usable
+through this macOS port. Multiplayer synchronization and long-session stability
+still need broader testing. Connecting to a server is not proof of compatibility.
+See [known limitations and remaining testing](docs/TODO.md).
+
+## Download and run
+
+### Requirements
+
+- An **Apple Silicon Mac**; Intel Macs are not supported by these builds.
+- **macOS 26 or newer**, because the current renderer requires Metal 4.
+- Internet access to download the Zero-K game and maps, and for online play.
+- Steam installed and running **only if you want Steam login**.
+
+You do not need developer tools, Homebrew, Mono, .NET, Wine, or Rosetta to run
+a prebuilt app.
+
+### Install a prebuilt DMG
+
+1. Open [ZkMacOS Releases](https://github.com/smallketchup82/ZkMacOS/releases)
+   and download `Zero-K-macOS-arm64.dmg` from a release with a binary attached.
+   **If there are no releases or no DMG attached, a public prebuilt download is
+   not available yet.** You can build locally using the instructions below or
+   use a DMG supplied by a maintainer you trust.
+2. Open the DMG and drag **Zero-K** onto **Applications** using the arrow.
+3. Eject the disk image and open **Zero-K.app** from Applications.
+4. Approve the app in macOS if needed, then sign in or choose offline play.
+   The lobby downloads the game and required maps as needed; these are not
+   included in the DMG.
+
+If a release includes a checksum file, place it beside the DMG and verify it
+in Terminal from that directory:
 
 ```sh
+shasum -a 256 -c Zero-K-macOS-arm64.dmg.sha256
+```
+
+### macOS approval
+
+The app is **not Developer ID signed or notarized**. Its ad-hoc signatures do
+not identify an Apple-verified publisher, so downloaded copies may be blocked.
+Only approve a copy whose source you trust.
+
+After attempting to open it, use **System Settings → Privacy & Security →
+Open Anyway** if available. Alternatively, remove quarantine from that specific
+trusted copy:
+
+```sh
+xattr -dr com.apple.quarantine "/Applications/Zero-K.app"
+```
+
+See [distribution and macOS approval](docs/DISTRIBUTION.md) for more detail.
+
+### Updating
+
+Quit Zero-K completely, then replace the app in Applications with the new one
+from the DMG. Your downloaded content and saved preferences remain in
+Application Support. New defaults apply to fresh profiles; updating the app
+does not overwrite your existing choices.
+
+## Settings, controls, and application data
+
+### First-launch defaults
+
+| Setting | Default |
+| --- | --- |
+| Lobby and game display | Windowed |
+| Graphics preset | Low |
+| Retina mode | Retina text and UI |
+| Trackpad camera controls | Enabled |
+| Three-finger tilt | Disabled; use Option + two fingers |
+| Lock Cursor to Window | Disabled |
+| Native FPS counter | Enabled |
+| VSync | Forced on |
+
+### Where your data lives
+
+The app's code and bundled resources stay inside `Zero-K.app`. Your accounts,
+settings, downloaded games and maps, replays, saves, logs, and caches live in:
+
+```text
+~/Library/Application Support/Zero-K
+```
+
+In Finder, press **⌘⇧G** and paste that path to open it.
+
+| File or folder, relative to that directory | Purpose |
+| --- | --- |
+| `springsettings.cfg` | Engine settings, including Retina mode and native trackpad settings |
+| `LuaMenu/Config/IGL_data.lua` | Saved lobby configuration |
+| `LuaUI/Config/ZK_data.lua` | Saved in-game UI and widget options, including cursor locking |
+| `games/`, `maps/`, `packages/`, `pool/`, `rapid/` | Downloaded content and content-management data |
+| `infolog.txt`, `log/` | Engine and launcher logs |
+| `demos/`, `saves/` | Replays and saved games |
+
+Prefer changing settings through the lobby or in-game menus. Quit the app
+before editing configuration files manually. Back up this directory if you
+want to preserve your setup. It can contain account information and other
+personal data: do not upload the whole directory with a bug report. Review logs
+and redact credentials, authentication tickets, and personal information before
+sharing them.
+
+### Steam integration
+
+Start the normal macOS Steam client and sign in before opening Zero-K. Use the
+lobby's Steam login option; the bundled helper handles the connection to Steam.
+You do not need a macOS Zero-K installation from the Steam store, and the app
+does not bundle the Steam client or anyone else's account.
+
+Steam is optional. Use ordinary Zero-K account login or offline play if you do
+not want Steam integration. If Steam login does not respond, check that Steam
+is running and signed in, then fully quit and reopen Zero-K.
+
+### Trackpad gestures
+
+Open the **in-game Settings → Camera → Trackpad** menu.
+
+| Gesture | Action |
+| --- | --- |
+| Two-finger movement | Pan the camera |
+| Pinch | Zoom |
+| Option + two-finger movement | Tilt; swipe down to tilt the camera up |
+| Three-finger movement | The same tilt direction, when Three-finger tilt is enabled |
+| Tap/click | Normal selection, following macOS trackpad settings |
+| Two-finger tap/secondary click | Right-click commands, following macOS trackpad settings |
+
+Three-finger tilt is off by default to avoid accidental palm gestures. Enable
+it with **Three-finger tilt** if you want it. macOS may reserve that gesture
+for system actions; Option + two fingers is the fallback and does not require
+three-finger tilt to be enabled.
+
+You can also adjust **Pan sensitivity**, **Pinch sensitivity**, **Tilt
+sensitivity**, **Reverse camera pan**, and **Camera momentum**, or disable
+**Trackpad camera controls** entirely. Three-finger tilt changes apply
+immediately. Configure tap-to-click and secondary click in macOS Trackpad
+settings. There is no custom Option + three-finger gesture.
+
+### Retina and FPS settings
+
+Choose **Retina / High-DPI** in the **lobby's Graphics settings**, directly below
+**Graphics Driver Selected**, or use **in-game Settings → Graphics → Display**.
+The setting is shared between the lobby and game.
+
+| Mode | Effect |
+| --- | --- |
+| Standard | Standard-resolution world and UI; lowest rendering bandwidth |
+| Retina text and UI | Crisp UI and text with the world at standard resolution; the default balance |
+| Full Retina | Renders the world at Retina resolution too; costs more GPU time and bandwidth |
+
+**Quit Zero-K completely and reopen it after changing Retina mode.** Starting
+another battle is not enough.
+
+Toggle **Show native FPS counter** in the same in-game Display menu, or use
+`/fps`. It displays FPS, average frame interval, and the current Retina mode,
+which helps compare UI-only and Full Retina performance.
+
+### Graphics, windows, and cursor locking
+
+Use the lobby's Graphics settings to choose a quality preset. Fresh profiles
+start at **Low**; higher presets and optional effects may expose rendering
+bugs or reduce performance. VSync is forced on in this port, and the lobby's
+frame-limiter setting is hidden on macOS.
+
+The lobby settings provide separate display choices for the menu and game;
+both start windowed. To change mouse capture, use **in-game Settings → Interface
+→ Mouse Cursor → Lock Cursor to Window**. It starts disabled.
+
+### Reporting problems
+
+[Open an issue here](https://github.com/smallketchup82/ZkMacOS/issues), with your
+Mac model, macOS version, app release, graphics preset, Retina mode, and steps
+to reproduce the problem. Attach relevant logs after reviewing them for
+personal information. Do not send port-specific bugs to the official Zero-K
+issue tracker or ask the upstream developers to support this client.
+
+## Build locally
+
+### Developer requirements
+
+Use an Apple Silicon Mac running macOS 26 or newer, Xcode/its command-line
+tools, [Homebrew](https://brew.sh/), and Git. The build dependencies are listed
+in [Brewfile](Brewfile), including the .NET SDK, Mono MSBuild, GCC, Mesa build
+tools, and create-dmg. The legacy Mono build toolchain also needs Rosetta on
+the build machine; the resulting app does not.
+
+The helper uses the .NET SDK selected by [global.json](global.json). The engine
+uses GCC 16. Renderer and Steamworks downloads are checksum-pinned in
+[assets.lock.json](assets.lock.json), and fork revisions are pinned in
+[sources.lock.json](sources.lock.json).
+
+### Clone, build, and run
+
+```sh
+git clone https://github.com/smallketchup82/ZkMacOS.git
+cd ZkMacOS
 brew bundle
 ./scripts/build-app.sh
 ./scripts/run-app.sh
 ```
 
-The legacy shared launcher assemblies are compiled as AnyCPU with Mono MSBuild
-during development; the native helper is published with .NET SDK 10.0.403 and
-a bundled ARM64 .NET 10.0.14 runtime. Mono/Rosetta are build-tool requirements,
-not requirements of the resulting app. The engine uses GCC 16; Mesa 26.3.0-rc1,
-libclc and Steamworks.NET 2025.164.1 sources are checksum-pinned.
+The build fetches the fork checkouts and dependency inputs, builds the renderer,
+engine, AI and launcher, and packages **`dist/Zero-K.app`**. It also audits the
+bundle's native architecture, library dependencies, and ad-hoc signatures.
+Build logs are under `build/logs/`. Close the running app before replacing it
+with a new build.
 
-The build script fetches the exact source revisions in `sources.lock.json`,
-prepares assets from `assets.lock.json`, builds the components, creates
-`dist/Zero-K.app` and audits its native dependencies, architecture and ad-hoc
-signatures. Logs are in `build/logs/`. Close the running app before replacing
-it with a new build.
-
-Engine builds are incremental: edits recompile affected source files and relink.
-The script reuses the configured build directory. Use
-`RECONFIGURE_ENGINE=1 ./scripts/build-app.sh` when changing toolchain options;
-Ninja also detects changes to the engine's CMake files automatically. Lobby,
-helper and packaging edits do not require a clean engine rebuild.
-
-Create the drag-to-install disk image separately:
+Engine builds are incremental: a source edit recompiles affected files and
+relinks. Lobby, helper, defaults, and packaging changes do not require a clean
+engine rebuild. When changing toolchain options, force CMake configuration with:
 
 ```sh
-./scripts/build-dmg.sh
+RECONFIGURE_ENGINE=1 ./scripts/build-app.sh
 ```
 
-The result is `dist/Zero-K-macOS-arm64.dmg` with the app and an Applications
-shortcut, an install arrow, and a Retina background. The script uses
-[create-dmg](https://github.com/create-dmg/create-dmg), installed by the Brewfile,
-to save the Finder layout. Run it in a logged-in macOS desktop session and allow
-Finder automation if macOS asks. The DMG does not contain development files or user data.
+### Making changes and checking them
 
-## Repository layout
-
-| Location | Purpose |
-| --- | --- |
-| `app/` | Native bootstrap and clean first-launch defaults |
-| `scripts/` | Fetch, build, bundle, audit, test and distribution commands |
-| `tests/` | Public test scripts and settings-contract checks |
-| `patches/` | Version-specific CircuitAI ARM64 fix |
-| `docs/` | Migration, engine updates, distribution and third-party notices |
-| `sources.lock.json`, `assets.lock.json` | Exact source and download pins |
-| `external/` | Ignored separate Git checkouts of the forks |
-| `build/`, `dist/`, `.cache/`, `.local/` | Ignored generated files and private development state |
-
-This repo does not vendor copies of Recoil, Chobby or the launcher. Their
-macOS changes belong in:
-
-- [RecoilEngine](https://github.com/smallketchup82/RecoilEngine), branch `macos/2026.07.04`.
-- [Chobby](https://github.com/smallketchup82/Chobby), branch `macos-port`.
-- [Zero-K-Infrastructure](https://github.com/smallketchup82/Zero-K-Infrastructure), branch `macos-port`, for the Steam helper.
-
-The initial engine is based on the actual upstream July release. See
-[engine updates](docs/ENGINE-UPDATES.md) before moving to another version;
-relabeling a different simulation is not a compatibility fix.
-
-## Application data and controls
-
-Static code, libraries, fonts, lobby and AI resources stay inside the app.
-Maps, game downloads, accounts, settings, saves, replays, logs and caches live
-in `~/Library/Application Support/Zero-K`. First launch copies only missing
-clean defaults. The app does not import any developer's account or content.
-
-The optional [migration script](docs/MIGRATION.md) imports the original local
-experiment separately; its detailed hash report remains private under `.local/`.
-
-Retina modes are Standard, Retina text/UI and Full Retina. Choose them in the
-lobby's Graphics settings or the in-game Graphics/Display settings, then quit
-and reopen the app. Text/UI mode is the default. VSync is forced on for this
-port, and the native FPS counter is available in game.
-
-Trackpad controls use two-finger movement to pan, pinch to zoom, and
-Option–two-finger movement to tilt; swipe down to tilt up. Three-finger tilt is
-off by default to avoid palm gestures. Enable it under the in-game
-Settings/Camera/Trackpad options when macOS does not reserve that gesture.
-Taps and secondary clicks follow macOS settings.
-
-## Verify and contribute
+This repository holds the bootstrap, clean defaults, build scripts, packaging,
+tests, patches, and version pins. The engine, lobby, and helper are separate
+fork checkouts under the ignored `external/` directory. Edit the relevant fork
+there, rebuild, and commit validated fork changes before updating the release
+pins. Source preparation preserves local checkout changes.
 
 ```sh
 luajit tests/check-settings.lua
@@ -105,30 +255,114 @@ uv run --python python3 scripts/smoke-app.py --seconds 90
 uv run --python python3 scripts/smoke-download.py
 ```
 
-The smoke test builds the app first, copies it to a different path, runs a
-bounded skirmish through the app entry point and checks that the app's contents
-remain unchanged. It uses existing downloads from Application Support; they
-are not bundled. It caps engine unified memory at 8 GiB and records results
-under `.local/relocation-test/`.
-The separate download check exercises the packaged helper's local protocol and
-downloads a public map into `.local/download-test/`, without opening a game or
-using the player's account/settings files.
+The relocation smoke test rebuilds the app, runs a bounded AI skirmish from a
+moved copy, and checks bundle writes and host dependencies. It uses existing
+game/map downloads without bundling them, limits engine unified memory to
+8 GiB, and writes results under `.local/relocation-test/`. The downloader test
+uses a private profile under `.local/download-test/`.
 
-For display changes, also test Fairyland at Medium and High water quality in
-all three Retina modes. Pan past the cliffs and trees, zoom, tilt and resize
-the window; check water refraction/reflections and that UI text stays aligned.
-Settings and camera changes in an isolated test should not alter the player's
-normal Application Support profile.
+For graphics changes, test water reflections and refraction at Medium and High
+quality, all Retina modes, camera gestures, and window resizing. Keep test
+profiles separate from your normal Application Support data. See
+[engine updates](docs/ENGINE-UPDATES.md) before changing the engine version;
+changing its reported version alone does not make a different simulation
+compatible with Zero-K's servers.
 
-Edit a fork under `external/` for engine, lobby or helper changes; edit this
-repo for orchestration and packaging. Source preparation preserves existing
-local work. Commit validated fork changes and update the lock file for a
-release. Share the matching source revisions with distributed binaries.
+Generated builds, downloads, external source checkouts, and private test data
+are ignored by Git. Keep personal data and compiled applications out of source
+commits. [Migration notes](docs/MIGRATION.md) describe the original port's layout
+and where its changes now live.
 
-The app intentionally has no Developer ID signature or notarization. Only
-certificate-free ad-hoc signatures are applied to modified native binaries.
-See [distribution and macOS approval](docs/DISTRIBUTION.md). Another-Mac testing
-and multiplayer synchronization checks remain necessary before broader release.
+## Package a release
 
-These macOS changes and build tools were developed with OpenAI Codex assistance.
-Upstream copyrights and licenses are preserved; see [third-party notices](docs/THIRD-PARTY.md).
+1. Commit and push the matching fork changes, then update `sources.lock.json`.
+   Use clean checkouts matching those pins for a release.
+2. Build and audit the app:
+
+   ```sh
+   ./scripts/build-app.sh
+   uv run --python python3 scripts/audit-app.py
+   ```
+
+3. Run the settings and smoke tests above. Test installation from the DMG on
+   another supported Mac without developer dependencies, and test multiplayer
+   synchronization against the matching Windows/Linux engine. Record the
+   hardware, macOS version, and known limitations with the release.
+4. Create the DMG separately, in a logged-in macOS desktop session:
+
+   ```sh
+   ./scripts/build-dmg.sh
+   ```
+
+   Allow Finder automation if prompted. The script uses
+   [create-dmg](https://github.com/create-dmg/create-dmg) to save the background,
+   arrow, icon positions, and Applications shortcut. It produces:
+
+   ```text
+   dist/Zero-K-macOS-arm64.dmg
+   dist/Zero-K-macOS-arm64.dmg.sha256
+   ```
+
+5. Publish those two files in a GitHub release, with the matching source
+   revisions, patches, build instructions, and third-party notices. The app
+   should contain only static resources; never copy your Application Support
+   profile into it. These builds use ad-hoc signing without a developer
+   certificate or notarization.
+
+The inputs are version-pinned; byte-for-byte identical DMGs are not currently
+claimed. See [distribution details](docs/DISTRIBUTION.md) for the trust process
+and packaging constraints.
+
+## AI disclosure
+
+ZkMacOS's macOS port changes, build tooling, and documentation were developed
+with substantial AI assistance using **OpenAI Codex**. AI-assisted code is not a
+guarantee of correctness. Local tests and manual playtesting have been done,
+but the port has not been thoroughly validated across hardware, long games,
+and multiplayer conditions. The warning at the top applies to every build.
+
+This disclosure concerns this port's changes; it does not attribute the
+upstream Zero-K projects or their contributors' work to AI.
+
+## Licensing and third-party projects
+
+The central ZkMacOS repository is licensed under [GNU GPL v3](LICENSE).
+Upstream projects, libraries, assets, and ported files retain their own
+copyrights and licenses. See
+[third-party notices](docs/THIRD-PARTY.md). The app also carries notices under
+`Zero-K.app/Contents/Resources/licenses/` and records native dependencies and
+source revisions under `Contents/Resources/`.
+
+### Forks used by this port
+
+| Component | ZkMacOS fork | Upstream |
+| --- | --- | --- |
+| Recoil engine | [smallketchup82/RecoilEngine](https://github.com/smallketchup82/RecoilEngine), `macos/2026.07.04` | [RecoilEngine](https://github.com/beyond-all-reason/RecoilEngine) |
+| Chobby lobby and macOS game widgets | [smallketchup82/Chobby](https://github.com/smallketchup82/Chobby), `macos-port` | [ZeroK-RTS/Chobby](https://github.com/ZeroK-RTS/Chobby) |
+| Launcher and native Steam helper | [smallketchup82/Zero-K-Infrastructure](https://github.com/smallketchup82/Zero-K-Infrastructure), `macos-port` | [ZeroK-RTS/Zero-K-Infrastructure](https://github.com/ZeroK-RTS/Zero-K-Infrastructure) |
+
+The exact commits are in `sources.lock.json`. The central repository does not
+vendor full copies of these projects.
+
+### Other tooling and dependencies
+
+- **Mesa, Zink, and KosmicKrisp:** the experimental GPU rendering stack;
+  [Mesa upstream](https://gitlab.freedesktop.org/mesa/mesa).
+- **CircuitAI and its dependencies:** the engine's bundled skirmish AI, with a
+  version-specific Apple ARM64 patch in this repository.
+- **Steamworks.NET and Valve's Steam API:** Steam integration;
+  [Steamworks.NET](https://github.com/rlabrecque/Steamworks.NET). The binding's
+  license and Valve's binary redistribution terms are separate.
+- **.NET, Mono MSBuild, and managed dependencies:** the native helper's runtime
+  and the shared launcher's build tools. Mono is a build dependency only.
+- **SDL/sdl2-compat, OpenAL Soft, DevIL, FreeType, fontconfig, and FreeSans:**
+  windowing/input, audio, image loading, and fonts, along with their dependencies.
+- **GCC, CMake, Ninja, Meson, LLVM, libclc, Python/uv, Swift/AppKit, and Homebrew:**
+  compilation, dependency preparation, native bootstrap, and packaging tools.
+- **[create-dmg](https://github.com/create-dmg/create-dmg):** DMG creation and
+  Finder layout. A build-local compatibility patch prevents Finder from
+  resetting the layout on macOS 27; the installed tool is left unchanged.
+
+Zero-K game content and maps are downloaded separately and retain their own
+licenses. Preserve upstream attribution and include the corresponding source,
+build instructions, and notices when redistributing a build.
