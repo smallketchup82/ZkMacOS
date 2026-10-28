@@ -8,7 +8,8 @@
     "patches": {
       "recoil-metalfx-spatial.patch": "1f8f2610f47c60a5d26942e366ebf8b531f7cb2f835867245704f16588dd25ca",
       "recoil-macos-fullscreen.patch": "a9ddc3ad5ec223846146e7711463eeb3658820a7a2da91bab23f32a7eed186a5",
-      "recoil-macos-notch.patch": "ec79b90d25fa2db4bcfa3794962131dfacbf43dda3697110cbcc379d586aed99"
+      "recoil-macos-notch.patch": "ec79b90d25fa2db4bcfa3794962131dfacbf43dda3697110cbcc379d586aed99",
+      "recoil-macos-hdr.patch": "e387d561126e88872b9a7d89e32e4a915c67bb77979380cbecabe95229909c93"
     }
   },
   "chobby": {
@@ -16,7 +17,8 @@
     "revision": "fbcc816be8970fa26d6bf3aa14c238ce70af2530",
     "patches": {
       "chobby-metalfx-spatial.patch": "ae848f22a0b9834136effd44a1f601b7f2889d56e70d44befed19e36604283f4",
-      "chobby-macos-notch.patch": "974f5cb26fb85dd71a71cdebd039e024f99f60a896df04fcba38402c53719683"
+      "chobby-macos-notch.patch": "974f5cb26fb85dd71a71cdebd039e024f99f60a896df04fcba38402c53719683",
+      "chobby-macos-hdr.patch": "14b7d1fb47a8e5e8f259df8341c36b645312ba1bc565f9cf0b5ae0dc2e8ad714"
     }
   },
   "infrastructure": {

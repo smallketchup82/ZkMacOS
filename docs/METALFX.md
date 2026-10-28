@@ -49,9 +49,9 @@ Toggle GPU sharing off/on to retry after a sharing failure. Switching back to
 PBO presentation discards queued frames from before sharing was enabled.
 
 The small Objective-C++ file compiles with Apple Clang and links only to system
-Metal/MetalFX/QuartzCore frameworks. GCC still builds the engine and synchronized code.
+AppKit/Metal/MetalFX/QuartzCore frameworks. GCC still builds the engine and synchronized code.
 Scalers and textures are reused until input/output dimensions change, and
-resources are released with the GL context. The input is display-referred
+resources are released with the GL context. The ordinary SDR input is display-referred
 RGBA8, so MetalFX uses perceptual processing without an additional sRGB
 conversion. The CPU compatibility readback stride is padded to 256 bytes.
 
@@ -61,6 +61,11 @@ clean source checkouts receive them through `scripts/fetch-sources.py`.
 applied by `scripts/build-mesa.sh`. A build-input fingerprint prevents an old
 unpatched Mesa installation from being silently reused. The release cache key
 already includes the asset lock and Mesa build script.
+
+[macOS HDR output](HDR.md) adds a floating-point world and composition path.
+The existing MetalFX scaler preserves these float values when enabled; HDR
+adds no separate world color-grading or bloom pass. GPU resource sharing now
+has a live toggle in both the lobby Graphics and in-game Display settings.
 
 ## Automated checks
 
@@ -72,7 +77,7 @@ luajit tests/check-settings.lua
 xcrun clang++ -std=c++17 -fobjc-arc -DMAC_EGL_ZINK \
   -I external/recoil/rts tests/check-metalfx.mm \
   external/recoil/rts/Rendering/GL/MacMetalFX.mm \
-  -framework Foundation -framework Metal -framework MetalFX -framework QuartzCore \
+  -framework AppKit -framework Foundation -framework Metal -framework MetalFX -framework QuartzCore \
   -o /tmp/zk-check-metalfx
 MTL_DEBUG_LAYER=1 /tmp/zk-check-metalfx
 
@@ -82,7 +87,7 @@ xcrun clang++ -std=c++17 -fobjc-arc -DMAC_EGL_ZINK \
   -I external/recoil/rts -I external/recoil/rts/lib \
   -I build/mesa-work/mesa-26.3.0-rc1/include \
   tests/check-gpu-sharing.mm external/recoil/rts/Rendering/GL/MacMetalFX.mm \
-  /tmp/zk-sharing-glad.o -framework Foundation -framework Metal \
+  /tmp/zk-sharing-glad.o -framework AppKit -framework Foundation -framework Metal \
   -framework MetalFX -framework QuartzCore \
   -Wl,-rpath,/opt/homebrew/opt/vulkan-loader/lib -o /tmp/zk-check-gpu-sharing
 MTL_DEBUG_LAYER=1 /tmp/zk-check-gpu-sharing "$PWD/build/mesa"

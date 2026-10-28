@@ -17,6 +17,7 @@ Chobby, and launcher builds into a self-contained `Zero-K.app`.
 | Native Apple Silicon support | ARM64 engine, AI, and launcher helper. No Wine, Rosetta, Mono, or separately installed .NET runtime needed to play. |
 | GPU acceleration on macOS | An experimental Mesa graphics stack runs the engine's OpenGL rendering through Zink and KosmicKrisp to Metal 4, rather than software rendering. |
 | Trackpad camera controls | Two-finger pan, pinch zoom, Option + two-finger tilt, and optional three-finger tilt, with sensitivity and momentum settings. |
+| Optional macOS HDR output | Preserves the game's existing bright lighting for HDR displays, with normal-brightness UI. Toggle it in Graphics settings. |
 | Retina rendering modes | Choose standard resolution, crisp text and UI with a lower-resolution world, or full-resolution Retina rendering. |
 | Native performance display | An FPS counter showing frame interval and the active Retina mode. |
 | macOS application packaging | A drag-to-install DMG, a self-contained app with the Zero-K icon, and writable data kept in Application Support. |
@@ -166,6 +167,7 @@ saved in `startup-warning-versions.json` in your Application Support data.
 | Three-finger tilt | Disabled; use Option + two fingers |
 | Lock Cursor to Window | Disabled |
 | Native FPS counter | Enabled |
+| macOS HDR display output | Disabled |
 | VSync | Forced on |
 
 ### Where your data lives
@@ -285,15 +287,35 @@ MacMetalFXSpatial = 1
 Set `MacMetalFXSpatial = 0` to disable it. The lobby reads this shared engine
 setting, so an older saved lobby selection does not override manual edits.
 
-Set `MacGPUSharing = 1` in `springsettings.cfg` to test GPU sharing in any display
-mode. It is disabled by default. Set it back to `0` to use the CPU staging
-compatibility path. Older or incompatible Mesa libraries fall back
+Toggle **GPU resource sharing** in the same lobby Graphics or in-game Display
+menu. It applies immediately and is off by default. The manual setting is
+`MacGPUSharing = 1`; use `0` for the CPU staging compatibility path. HDR display
+output always uses shared textures, even when this switch is off. Older or incompatible Mesa libraries fall back
 automatically and log a `[MacGPUSharing]` warning. That fallback can cost more
 bandwidth and GPU/CPU synchronization time.
 
 Toggle **Show native FPS counter** in the same in-game Display menu, or use
 `/fps`. It displays FPS, average frame interval, and the current Retina mode,
 which helps compare UI-only and Full Retina performance.
+
+### macOS HDR display output
+
+Enable **macOS HDR display output** in the lobby's **Graphics** settings or
+**in-game Settings → Graphics → Display**. It applies immediately in all three
+Retina modes and is off by default. It preserves bright values from the game's
+existing lighting for an HDR display, without adding color grading, highlight
+expansion or another bloom effect. Opaque UI white stays at normal brightness.
+
+The game's **HDR (experimental)** controls belong to its legacy lighting
+renderer; GL4 lighting replaces that renderer when available. These lighting
+choices are separate from macOS display output. Enable the game's deferred
+lighting buffers to use its dynamic lighting; an HDR output switch does not
+create new lights or recover brightness clipped inside an effect.
+
+The engine adapts to available display headroom and uses SDR if HDR output is
+unavailable. To configure manually, set `MacHDR = 1` in `springsettings.cfg`;
+use `0` for SDR. HDR requires GPU sharing for its own frames and may cost GPU
+time. See [HDR output and validation](docs/HDR.md).
 
 ### Graphics, windows, and cursor locking
 
