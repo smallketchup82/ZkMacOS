@@ -42,7 +42,7 @@ local _, names = dofile("external/chobby/LuaMenu/configs/gameConfig/zk/settingsM
 local configuration = setmetatable({
 	gameConfig = {settingsNames = names}, noNaiveConfigOverride = {settingsMenuValues = true},
 	channels = {}, game_settings = {}, settingsMenuValues = {},
-	listeners = {}, configParamTypes = {MacHDR = "bool", MacRetinaMode = "int", MacGPUSharing = "bool", MacNotchFullscreen = "bool", MacMetalFXSpatial = "bool"},
+	listeners = {}, configParamTypes = {MacHDR = "bool", MacRetinaMode = "int", MacGPUSharing = "bool", MacNotchFullscreen = "bool", MacMetalFXSpatial = "bool", MacDisplayLink = "bool"},
 }, {__index = Configuration})
 WG.Chobby.Configuration = configuration
 
