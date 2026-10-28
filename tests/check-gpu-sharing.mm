@@ -4,6 +4,7 @@
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -187,9 +188,120 @@ int main(int argc, char** argv)
 		assert(bytes[24 * 256 + 16 * 4] < 5 && bytes[24 * 256 + 16 * 4 + 2] > 250);
 		MacMetalFX::Destroy();
 	}
+	// HDR uses an offscreen GL float framebuffer rather than Zink's pbuffer.
+	// These have opposite native texture orientations. Test the real GL/Metal
+	// path, including opaque UI compositing, rather than a symmetric test image.
+	GLuint hdrFBOs[2], hdrTextures[2];
+	glGenFramebuffers(2, hdrFBOs);
+	glGenTextures(2, hdrTextures);
+	for (int i = 0; i < 2; ++i) {
+		glBindTexture(GL_TEXTURE_2D, hdrTextures[i]);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 32, 32, 0, GL_RGBA, GL_HALF_FLOAT, nullptr);
+		glBindFramebuffer(GL_FRAMEBUFFER, hdrFBOs[i]);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, hdrTextures[i], 0);
+		assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
+		glClearColor(0, 0, 0, 0); glClear(GL_COLOR_BUFFER_BIT);
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, hdrFBOs[0]);
+	glClearColor(2, 0, 0, 1); glClear(GL_COLOR_BUFFER_BIT);
+	glEnable(GL_SCISSOR_TEST); glScissor(0, 16, 32, 16);
+	glClearColor(0, 0, 3, 1); glClear(GL_COLOR_BUFFER_BIT);
+	glDisable(GL_SCISSOR_TEST); glFinish();
+	auto [hdrDevice, hdrSource] = nativeTexture();
+	glBindFramebuffer(GL_FRAMEBUFFER, hdrFBOs[1]);
+	auto [hdrOutputDevice, hdrOutput] = nativeTexture();
+	assert(hdrDevice == hdrOutputDevice);
+	// The engine resolves existing HDR lighting without another effects pass.
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, hdrFBOs[0]);
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, hdrFBOs[1]);
+	glBlitFramebuffer(0, 0, 32, 32, 0, 0, 32, 32, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+	glBindFramebuffer(GL_FRAMEBUFFER, hdrFBOs[1]);
+	float sample[4];
+	glReadPixels(16, 8, 1, 1, GL_RGBA, GL_FLOAT, sample);
+	assert(std::abs(sample[0] - 2.0f) < 0.005f && sample[2] == 0.0f);
+	glReadPixels(16, 24, 1, 1, GL_RGBA, GL_FLOAT, sample);
+	assert(std::abs(sample[2] - 3.0f) < 0.005f && sample[0] == 0.0f);
+	glEnable(GL_SCISSOR_TEST); glScissor(0, 0, 4, 4);
+	glClearColor(1, 1, 1, 1); glClear(GL_COLOR_BUFFER_BIT);
+	glDisable(GL_SCISSOR_TEST); glFinish();
+	@autoreleasepool {
+		SharingTestLayer* layer = [SharingTestLayer layer];
+		layer.device = (__bridge id<MTLDevice>)hdrDevice;
+		layer.pixelFormat = MTLPixelFormatRGBA16Float;
+		layer.drawableSize = CGSizeMake(32, 32);
+		layer.framebufferOnly = NO;
+		assert(MacMetalFX::PresentShared(hdrDevice, hdrOutput, (__bridge void*)layer, 4.0f));
+		assert(layer.capturedDrawable);
+		id<MTLBuffer> buffer = [layer.device newBufferWithLength:32 * 256 options:MTLResourceStorageModeShared];
+		id<MTLCommandBuffer> commands = [[layer.device newCommandQueue] commandBuffer];
+		id<MTLBlitCommandEncoder> blit = [commands blitCommandEncoder];
+		[blit copyFromTexture:layer.capturedDrawable.texture sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0)
+			sourceSize:MTLSizeMake(32, 32, 1) toBuffer:buffer destinationOffset:0
+			destinationBytesPerRow:256 destinationBytesPerImage:32 * 256];
+		[blit endEncoding]; [commands commit]; [commands waitUntilCompleted];
+		assert(commands.status == MTLCommandBufferStatusCompleted);
+		const auto* pixels = static_cast<const __fp16*>(buffer.contents);
+		// Final drawable is top-first: blue top, red bottom, SDR white UI bottom-left.
+		assert(float(pixels[8 * 128 + 16 * 4 + 2]) > 1.1f && float(pixels[8 * 128 + 16 * 4]) < 0.1f);
+		assert(float(pixels[24 * 128 + 16 * 4]) > 1.1f && float(pixels[24 * 128 + 16 * 4 + 2]) < 0.1f);
+		assert(std::abs(float(pixels[30 * 128 + 2 * 4]) - 1.0f) < 0.005f);
+		assert(std::abs(float(pixels[30 * 128 + 2 * 4 + 2]) - 1.0f) < 0.005f);
+		MacMetalFX::Destroy();
+	}
+	// The legacy map-edge shader writes an out-of-range fade to gl_FrontColor.
+	// SDR clamps this at the vertex stage; HDR must preserve that behavior while
+	// leaving fragment-shader RGB and additive accumulation free to exceed white.
+	const char* edgeVertex = R"(#version 120
+uniform float edgeAlpha;
+void main() {
+    gl_Position = gl_Vertex;
+    gl_FrontColor = vec4(0.1, 0.2, 0.3, edgeAlpha);
+})";
+	GLuint edgeShader = glCreateShader(GL_VERTEX_SHADER);
+	glShaderSource(edgeShader, 1, &edgeVertex, nullptr); glCompileShader(edgeShader);
+	GLint compiled = 0; glGetShaderiv(edgeShader, GL_COMPILE_STATUS, &compiled); assert(compiled);
+	GLuint edgeProgram = glCreateProgram(); glAttachShader(edgeProgram, edgeShader); glLinkProgram(edgeProgram);
+	GLint linked = 0; glGetProgramiv(edgeProgram, GL_LINK_STATUS, &linked); assert(linked);
+	GLint edgeAlpha = glGetUniformLocation(edgeProgram, "edgeAlpha");
+	glBindFramebuffer(GL_FRAMEBUFFER, hdrFBOs[0]);
+	glViewport(0, 0, 32, 32); glDisable(GL_DEPTH_TEST); glDisable(GL_TEXTURE_2D);
+	glClampColor(GL_CLAMP_FRAGMENT_COLOR, GL_FALSE);
+	glUseProgram(edgeProgram);
+	auto drawEdge = [&]() {
+		glBegin(GL_TRIANGLE_STRIP);
+		glVertex2f(-1, -1); glVertex2f(1, -1); glVertex2f(-1, 1); glVertex2f(1, 1);
+		glEnd();
+	};
+	for (bool clampVertex : {false, true}) for (float alpha : {1.5f, -0.5f, 0.5f}) {
+		glClampColor(GL_CLAMP_VERTEX_COLOR, clampVertex ? GL_TRUE : GL_FALSE);
+		glDisable(GL_BLEND); glClearColor(0.75f, 0.75f, 0.75f, 1); glClear(GL_COLOR_BUFFER_BIT);
+		glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glUniform1f(edgeAlpha, alpha); drawEdge();
+		glReadPixels(16, 16, 1, 1, GL_RGBA, GL_FLOAT, sample);
+		const float expectedAlpha = clampVertex ? std::clamp(alpha, 0.0f, 1.0f) : alpha;
+		for (int c = 0; c < 3; ++c)
+			assert(std::abs(sample[c] - ((c + 1) * 0.1f * expectedAlpha + 0.75f * (1 - expectedAlpha))) < 0.002f);
+	}
+	// Explicit fragment-shader HDR values must still survive vertex clamping.
+	const char* hdrFragment = "#version 120\nvoid main() { gl_FragColor = vec4(2.0, 0.3, 0.1, 1.0); }";
+	GLuint hdrShader = glCreateShader(GL_FRAGMENT_SHADER);
+	glShaderSource(hdrShader, 1, &hdrFragment, nullptr); glCompileShader(hdrShader);
+	glGetShaderiv(hdrShader, GL_COMPILE_STATUS, &compiled); assert(compiled);
+	glAttachShader(edgeProgram, hdrShader); glLinkProgram(edgeProgram);
+	glGetProgramiv(edgeProgram, GL_LINK_STATUS, &linked); assert(linked);
+	glUseProgram(edgeProgram); glDisable(GL_BLEND); glClampColor(GL_CLAMP_VERTEX_COLOR, GL_TRUE);
+	drawEdge(); glReadPixels(16, 16, 1, 1, GL_RGBA, GL_FLOAT, sample);
+	assert(std::abs(sample[0] - 2.0f) < 0.005f);
+	glUseProgram(0); glDeleteProgram(edgeProgram); glDeleteShader(edgeShader); glDeleteShader(hdrShader);
+	glClampColor(GL_CLAMP_FRAGMENT_COLOR, GL_FIXED_ONLY);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glDeleteFramebuffers(2, hdrFBOs); glDeleteTextures(2, hdrTextures);
+	assert(glGetError() == GL_NO_ERROR);
+
 	eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 	eglDestroyContext(display, context);
 	eglDestroySurface(display, surface);
 	eglTerminate(display);
-	std::puts("PASS: Mesa/MetalFX GPU sharing, repeated writes, resize, color, orientation, cleanup and presentation export");
+	std::puts("PASS: Mesa/MetalFX GPU sharing, repeated writes, resize, color, orientation, cleanup, SDR/HDR presentation orientation, SDR UI compositing and legacy map-edge alpha clamping");
 }

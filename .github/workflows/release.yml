@@ -118,6 +118,8 @@ jobs:
           luajit tests/check-display-sync.lua
           luajit tests/check-trackpad-settings.lua
           luajit tests/check-metalfx-settings.lua
+          luajit tests/check-hdr-settings.lua
+          luajit tests/check-gpu-sharing-settings.lua
           uv run --no-project --python python3 python tests/check-cask.py
           uv run --no-project --python python3 python tests/check-release-version.py
           swiftc -D UPDATE_CHECK_TESTS -framework AppKit -F .cache/sparkle-2.10.1 -framework Sparkle \

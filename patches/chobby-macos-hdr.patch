@@ -1,0 +1,135 @@
+--- a/LuaMenu/configs/gameConfig/zk/settingsMenu.lua
++++ b/LuaMenu/configs/gameConfig/zk/settingsMenu.lua
+@@ -1377,6 +1377,30 @@
+ 			{name = "On", apply = {MacMetalFXSpatial = 1}},
+ 		},
+ 	}
++	local hdrSetting = {
++		name = "MacHDR",
++		humanName = "macOS HDR display output",
++		desc = "Displays the game's existing HDR lighting on a macOS HDR display. Preserves normal scene colors and UI white; adds no extra bloom or highlight expansion. Configure game lighting under Graphics / HDR (experimental). Applies immediately. Requires shared GPU textures; uses SDR if unavailable.",
++		defaultFunction = function()
++			return Spring.GetConfigInt("MacHDR", 0) == 1 and "On" or "Off"
++		end,
++		options = {
++			{name = "Off", apply = {MacHDR = 0}},
++			{name = "On", apply = {MacHDR = 1}},
++		},
++	}
++	local gpuSharingSetting = {
++		name = "MacGPUSharing",
++		humanName = "GPU resource sharing",
++		desc = "Experimental GPU resource sharing for MetalFX and SDR presentation. Avoids CPU pixel transfers but still waits for GPU completion. Applies immediately. HDR display output always requires sharing, even when this switch is off. Unsupported resources fall back to CPU transfers.",
++		defaultFunction = function()
++			return Spring.GetConfigInt("MacGPUSharing", 0) == 1 and "On" or "Off"
++		end,
++		options = {
++			{name = "Off", apply = {MacGPUSharing = 0}},
++			{name = "On", apply = {MacGPUSharing = 1}},
++		},
++	}
+ 	local notchSetting = {
+ 		name = "MacNotchFullscreen", humanName = "Notchful fullscreen",
+ 		desc = "Allows fullscreen to cover the camera-housing area. The resource HUD automatically adapts to the display's notch; other fullscreen modes keep the default layout. Uses desktop fullscreen without a separate Space. Restart Zero-K to apply.",
+@@ -1418,7 +1442,9 @@
+ 		if setting.name == "ActiveGraphicsLabel" then
+ 			table.insert(graphicsSettings, index + 1, retinaSetting)
+ 			table.insert(graphicsSettings, index + 2, metalFXSetting)
+-			table.insert(graphicsSettings, index + 3, notchSetting)
++			table.insert(graphicsSettings, index + 3, hdrSetting)
++			table.insert(graphicsSettings, index + 4, gpuSharingSetting)
++			table.insert(graphicsSettings, index + 5, notchSetting)
+ 			break
+ 		end
+ 	end
+@@ -1426,6 +1452,8 @@
+ 	settingsDefault.VSync = nil
+ 	settingsDefault.MacRetinaMode = retinaSetting.defaultFunction()
+ 	settingsDefault.MacMetalFXSpatial = metalFXSetting.defaultFunction()
++	settingsDefault.MacHDR = hdrSetting.defaultFunction()
++	settingsDefault.MacGPUSharing = gpuSharingSetting.defaultFunction()
+ 	settingsDefault.MacNotchFullscreen = notchSetting.defaultFunction()
+ end
+ 
+--- a/LuaMenu/widgets/chobby/components/configuration.lua
++++ b/LuaMenu/widgets/chobby/components/configuration.lua
+@@ -550,13 +550,17 @@
+ 		for name, value in pairs(data.settingsMenuValues) do
+ 			-- Shared display settings use the engine value, including manual
+ 			-- springsettings.cfg edits, rather than a saved lobby selection.
+-			if name ~= "MacRetinaMode" and name ~= "MacMetalFXSpatial" and name ~= "MacNotchFullscreen" then self:SetSettingsConfigOption(name, value) end
++			if name ~= "MacRetinaMode" and name ~= "MacMetalFXSpatial" and name ~= "MacNotchFullscreen" and name ~= "MacHDR" and name ~= "MacGPUSharing" then self:SetSettingsConfigOption(name, value) end
+ 		end
+ 	end
+ 	local retinaSetting = self.gameConfig.settingsNames.MacRetinaMode
+ 	if retinaSetting then self:SetSettingsConfigOption("MacRetinaMode", retinaSetting.defaultFunction()) end
+ 	local metalFXSetting = self.gameConfig.settingsNames.MacMetalFXSpatial
+ 	if metalFXSetting then self:SetSettingsConfigOption("MacMetalFXSpatial", metalFXSetting.defaultFunction()) end
++	local sharingSetting = self.gameConfig.settingsNames.MacGPUSharing
++	if sharingSetting then self:SetSettingsConfigOption("MacGPUSharing", sharingSetting.defaultFunction()) end
++	local hdrSetting = self.gameConfig.settingsNames.MacHDR
++	if hdrSetting then self:SetSettingsConfigOption("MacHDR", hdrSetting.defaultFunction()) end
+ 	local notchSetting = self.gameConfig.settingsNames.MacNotchFullscreen
+ 	if notchSetting then self:SetSettingsConfigOption("MacNotchFullscreen", notchSetting.defaultFunction()) end
+ end
+--- a/LuaMenu/widgets/gui_macos_display.lua
++++ b/LuaMenu/widgets/gui_macos_display.lua
+@@ -22,4 +22,14 @@
+ 	if notch and notchSetting then
+ 		configuration:SetSettingsConfigOption("MacNotchFullscreen", notchSetting.options[notch + 1].name)
+ 	end
++	local hdr = tonumber(message:match("^macHDR ([01])$"))
++	local hdrSetting = configuration and configuration.gameConfig.settingsNames.MacHDR
++	if hdr and hdrSetting then
++		configuration:SetSettingsConfigOption("MacHDR", hdrSetting.options[hdr + 1].name)
++	end
++	local sharing = tonumber(message:match("^macGPUSharing ([01])$"))
++	local sharingSetting = configuration and configuration.gameConfig.settingsNames.MacGPUSharing
++	if sharing and sharingSetting then
++		configuration:SetSettingsConfigOption("MacGPUSharing", sharingSetting.options[sharing + 1].name)
++	end
+ end
+--- a/macos/game-data/LuaUI/Widgets/gui_macos_display.lua
++++ b/macos/game-data/LuaUI/Widgets/gui_macos_display.lua
+@@ -6,7 +6,7 @@
+ end
+ 
+ options_path = "Settings/Graphics/Display"
+-options_order = {"retina", "metalFX", "notch", "fps"}
++options_order = {"retina", "metalFX", "hdr", "gpuSharing", "notch", "fps"}
+ 
+ local restartPrompt
+ 
+@@ -63,6 +63,32 @@
+ 			Spring.SetConfigInt("MacMetalFXSpatial", enabled)
+ 			if Spring.SendLuaMenuMsg then
+ 				Spring.SendLuaMenuMsg("macMetalFXSpatial " .. enabled)
++			end
++		end,
++	},
++	hdr = {
++		name = "macOS HDR display output",
++		desc = "Displays the game's existing HDR lighting on a macOS HDR display. Preserves normal scene colors and UI white; adds no extra bloom or highlight expansion. Configure game lighting under Graphics / HDR (experimental). Applies immediately. Requires shared GPU textures; uses SDR if unavailable.",
++		type = "bool", noSave = true, simpleMode = true, everyMode = true,
++		value = Spring.GetConfigInt("MacHDR", 0) == 1,
++		OnChange = function(self)
++			local enabled = self.value and 1 or 0
++			Spring.SetConfigInt("MacHDR", enabled)
++			if Spring.SendLuaMenuMsg then
++				Spring.SendLuaMenuMsg("macHDR " .. enabled)
++			end
++		end,
++	},
++	gpuSharing = {
++		name = "GPU resource sharing",
++		desc = "Experimental GPU resource sharing for MetalFX and SDR presentation. Avoids CPU pixel transfers but still waits for GPU completion. Applies immediately. HDR display output always requires sharing, even when this switch is off. Unsupported resources fall back to CPU transfers.",
++		type = "bool", noSave = true, simpleMode = true, everyMode = true,
++		value = Spring.GetConfigInt("MacGPUSharing", 0) == 1,
++		OnChange = function(self)
++			local enabled = self.value and 1 or 0
++			Spring.SetConfigInt("MacGPUSharing", enabled)
++			if Spring.SendLuaMenuMsg then
++				Spring.SendLuaMenuMsg("macGPUSharing " .. enabled)
+ 			end
+ 		end,
+ 	},
