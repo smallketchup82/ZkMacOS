@@ -1,5 +1,5 @@
 diff --git a/LuaMenu/configs/gameConfig/zk/settingsMenu.lua b/LuaMenu/configs/gameConfig/zk/settingsMenu.lua
-index 68074a1..e96f5ee 100644
+index 8254744..f9759b4 100644
 --- a/LuaMenu/configs/gameConfig/zk/settingsMenu.lua
 +++ b/LuaMenu/configs/gameConfig/zk/settingsMenu.lua
 @@ -1377,6 +1377,25 @@ if isMac then
@@ -80,7 +80,7 @@ index c6b1313..a09de49 100644
 +	end
  end
 diff --git a/macos/game-data/LuaUI/Widgets/gui_macos_display.lua b/macos/game-data/LuaUI/Widgets/gui_macos_display.lua
-index b066fcc..87dfcd4 100644
+index 5ec3055..85776cf 100644
 --- a/macos/game-data/LuaUI/Widgets/gui_macos_display.lua
 +++ b/macos/game-data/LuaUI/Widgets/gui_macos_display.lua
 @@ -6,11 +6,11 @@ function widget:GetInfo()
@@ -126,7 +126,7 @@ index b066fcc..87dfcd4 100644
  	fps = {
  		name = "Show native FPS counter",
  		desc = "Shows FPS, average frame interval and the active Retina mode. Also toggled with /fps.",
-@@ -83,6 +96,211 @@ function widget:Initialize()
+@@ -83,6 +96,229 @@ function widget:Initialize()
  	end
  end
  
@@ -155,7 +155,7 @@ index b066fcc..87dfcd4 100644
 +		local label = labels[i]
 +		originalLabels[i] = {control = label, font = label.font, hitTest = label.HitTest,
 +			tooltip = label.tooltip, autosize = label.autosize, align = label.align, valign = label.valign,
-+			updateLayout = label.UpdateLayout}
++			updateLayout = label.UpdateLayout, draw = label.DrawControl}
 +	end
 +	local flowText = {}
 +	for _, child in ipairs(reserve.parent.children) do
@@ -164,6 +164,21 @@ index b066fcc..87dfcd4 100644
 +		end
 +	end
 +	return {icon = icon, holder = reserve.parent, labels = originalLabels, flowText = flowText}
++end
++
++local function DrawCenteredResourceText(control)
++	local caption = control.caption
++	if not caption or caption == "" then return end
++	local font = control.font
++	-- Glyph positions already compensate for the font's overall descender.
++	-- Only the caption's own descender needs centering (notably for arrows).
++	local _, descender = font:GetTextHeight(caption)
++	local x, y = 0, 0
++	-- Old Chili draws in parent coordinates; Chili 2.1 translates controls first.
++	if WG.Chili.CHILI_DIRNAME:find("chili_old/", 1, true) then
++		x, y = control.x, control.y
++	end
++	font:Draw(caption, x + control.width / 2, y + control.height / 2 + descender / 2, "center", "center")
 +end
 +
 +local function PositionResourceText(controls, scale)
@@ -181,6 +196,7 @@ index b066fcc..87dfcd4 100644
 +			label.autosize, label.align, label.valign = false, "center", "center"
 +			-- Glyphs fit the bar even when the font's line spacing is taller.
 +			label.UpdateLayout = function(self) self._caption = self.caption end
++			label.DrawControl = DrawCenteredResourceText
 +			label:UpdateLayout()
 +			if i == 1 then
 +				label.tooltip = nil
@@ -205,12 +221,11 @@ index b066fcc..87dfcd4 100644
 +			bar.DrawControl = function(self)
 +				local caption = self.caption
 +				self.caption = ""
-+				draw(self)
++				-- The energy warning overlay is a second, full-value fill.
++				-- Keep its arrows, without a rectangular tint over the compact bar.
++				if not self.noSkin then draw(self) end
 +				self.caption = caption
-+				if caption and caption ~= "" then
-+					-- Center the visible glyph, avoiding the skin's baseline heuristic.
-+					self.font:Draw(caption, self.width / 2 + 0.5 / scale, self.height / 2, "center", "center")
-+				end
++				DrawCenteredResourceText(self)
 +			end
 +			bar:Invalidate()
 +		end
@@ -218,16 +233,15 @@ index b066fcc..87dfcd4 100644
 +	end
 +	local icon, holder = controls.icon, controls.holder
 +	labels[1].control:SetPos(icon.x - 16 / scale, icon.y, icon.width + 32 / scale, icon.height)
-+	local textY = holder.y - 1 / scale
-+	labels[2].control:SetPos(holder.x, textY, holder.width / 2, holder.height)
-+	labels[3].control:SetPos(holder.x + holder.width / 2, textY, holder.width / 2, holder.height)
++	labels[2].control:SetPos(holder.x, holder.y, holder.width / 2, holder.height)
++	labels[3].control:SetPos(holder.x + holder.width / 2, holder.y, holder.width / 2, holder.height)
 +end
 +
 +local function SizeResourceControls(controls, resource, topHeight, scale, isMetal)
 +	if not controls then return end
 +	local padding = resource.padding or {0, 0, 0, 0}
 +	local clientWidth = resource.width - padding[1] - padding[3]
-+	local iconSize, barWidth, barHeight = 28 / scale, 210 / scale, 16 / scale
++	local iconSize, barWidth, barHeight = math.min(28 / scale, topHeight), 210 / scale, 16 / scale
 +	local barX = isMetal and (clientWidth - barWidth - 8 / scale) or 38 / scale
 +	local iconX = isMetal and (barX - iconSize - 6 / scale) or 4 / scale
 +	controls.icon:SetPos(iconX, math.max(0, (topHeight - iconSize) / 2 - padding[2]), iconSize, iconSize)
@@ -260,6 +274,7 @@ index b066fcc..87dfcd4 100644
 +				label.font, label.HitTest, label.tooltip = original.font, original.hitTest, original.tooltip
 +				label.autosize, label.align, label.valign = original.autosize, original.align, original.valign
 +				label.UpdateLayout = original.updateLayout
++				label.DrawControl = original.draw
 +				label:SetPosRelative(({"18%", "44%", "70%"})[i], "47%", "26%", "45%")
 +				label:Invalidate()
 +			end
@@ -303,7 +318,7 @@ index b066fcc..87dfcd4 100644
 +		local strip = WG.Chili.Panel:New {
 +			parent = main, name = "macOS Center Topbar", classname = "panel_0001_small",
 +			x = 0, y = 0, width = width + gap, height = 38 / (WG.uiScale or 1),
-+			padding = {0, 0, 0, 0}, backgroundColor = {1, 1, 1, 0.95},
++			backgroundColor = {1, 1, 1, 0.95},
 +		}
 +		strip:SendToBack()
 +		economySpacing = {panel = panel, metal = metal, energy = energy, strip = strip,
@@ -330,8 +345,11 @@ index b066fcc..87dfcd4 100644
 +	local stripLeft = commands and (commands.x + commands.width) or panel.x
 +	local stripRight = menu and menu.x or (panel.x + width + gap)
 +	economySpacing.strip:SetPos(stripLeft - panel.x, 0, math.max(0, stripRight - stripLeft), topHeight)
-+	SizeResourceControls(economySpacing.resourceControls.metal, metal, topHeight, scale, true)
-+	SizeResourceControls(economySpacing.resourceControls.energy, energy, topHeight, scale, false)
++	-- The skin's lower border is outside the usable toolbox area.
++	local stripPadding = economySpacing.strip.padding
++	local contentHeight = topHeight - stripPadding[4]
++	SizeResourceControls(economySpacing.resourceControls.metal, metal, contentHeight, scale, true)
++	SizeResourceControls(economySpacing.resourceControls.energy, energy, contentHeight, scale, false)
 +end
 +
  function widget:Shutdown()

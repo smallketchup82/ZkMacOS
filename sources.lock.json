@@ -17,7 +17,7 @@
     "revision": "fbcc816be8970fa26d6bf3aa14c238ce70af2530",
     "patches": {
       "chobby-metalfx-spatial.patch": "ae848f22a0b9834136effd44a1f601b7f2889d56e70d44befed19e36604283f4",
-      "chobby-macos-notch.patch": "974f5cb26fb85dd71a71cdebd039e024f99f60a896df04fcba38402c53719683"
+      "chobby-macos-notch.patch": "ff7ddc704342c826bcf0b2779a7eb12e8de3dcd70dd944e791e456735129ad19"
     }
   },
   "infrastructure": {
