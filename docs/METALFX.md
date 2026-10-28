@@ -218,3 +218,14 @@ enforces commander selection in every case; `--case` can repeat one configuratio
    briefly show an old frame. Measure on the hardware you intend to use.
 
 API reference: [Apple's MetalFX spatial scaler](https://developer.apple.com/documentation/metalfx/mtlfxspatialscaler).
+
+### Experimental DisplayLink frame pacing
+
+DisplayLink is available in the lobby graphics settings and in-game under
+Settings / Graphics / Display. It defaults to off (`MacDisplayLink = 0`) and
+applies immediately. Enable GPU resource sharing or HDR output to use its native
+Metal presentation path. It falls back when that path is unavailable.
+
+Initial measurements regressed, so this remains an opt-in experiment. The
+separate GPU-event synchronization and reusable-upload experiments are preserved
+outside this change. HDR color handling and the ordinary presenter are retained.
