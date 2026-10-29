@@ -1,5 +1,5 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
-// Run using the compile command in docs/METALFX.md.
+// Run using the compile command at https://github.com/smallketchup82/ZkMacOS/wiki/Development-Rendering-MetalFX.
 #include "Rendering/GL/MacEGLBridge.h"
 
 #include <cassert>

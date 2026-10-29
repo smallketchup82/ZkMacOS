@@ -168,7 +168,7 @@ jobs:
           cat > build/release-notes.md <<'EOF'
           Unofficial, experimental Zero-K client for Apple Silicon Macs running macOS 26 or newer.
 
-          Download the DMG and drag `Zero-K.app` into `Applications`; see the repository README for macOS approval instructions and alternate installation methods.
+          Download the DMG and drag `Zero-K.app` into `Applications`; see the [installation guide](https://github.com/smallketchup82/ZkMacOS/wiki/Installation) for macOS approval and optional Homebrew installation.
           EOF
           printf '\nSource commit: %s\n' "$GITHUB_SHA" >> build/release-notes.md
           gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \

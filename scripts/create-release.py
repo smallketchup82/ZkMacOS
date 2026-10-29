@@ -226,7 +226,7 @@ def main():
         notes_file = args.notes_file or ROOT / 'build/release-notes.md'
         if not args.notes_file:
             notes_file.write_text('Unofficial, experimental Zero-K client for Apple Silicon Macs running macOS 26 or newer.\n\n'
-                                  'Download the DMG and drag `Zero-K.app` into `Applications`; see the README for installation instructions.\n\n'
+                                  'Download the DMG and drag `Zero-K.app` into `Applications`; see the [installation guide](https://github.com/smallketchup82/ZkMacOS/wiki/Installation).\n\n'
                                   f'Source commit: {commit}\n')
         url = create_draft(display, tag, commit, notes_file)
         display.console.print('Draft editor: ' + url, markup=False)
