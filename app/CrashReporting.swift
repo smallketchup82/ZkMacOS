@@ -69,7 +69,7 @@ final class CrashReporting {
             let parts = line.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
             if parts.count == 2 && parts[0] == key { return parts[1] == "1" }
         }
-        return false
+        return key == "MacAutomaticCrashReporting"
     }
 
     private func prompt(_ event: [String: Any], key: String) {

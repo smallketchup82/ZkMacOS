@@ -59,6 +59,18 @@ an optional convenience covered below it in the installation guide.
 | [Get help](https://github.com/smallketchup82/ZkMacOS/wiki/Getting-Help) | [Contribute code or documentation](https://github.com/smallketchup82/ZkMacOS/wiki/Contributing) |
 | [Report a bug](https://github.com/smallketchup82/ZkMacOS/wiki/Reporting-Bugs) | [Update the engine version](https://github.com/smallketchup82/ZkMacOS/wiki/Development-Engine-Updates) |
 
+## Privacy
+
+The macOS port adds Sentry error and crash logging. **Automatic crash reporting
+is enabled by default in release builds; automatic error reporting is off by
+default.** Telemetry is used **only to fix bugs and crashes**.
+
+You can customize reporting and optional attachments in **Settings → Telemetry**,
+or fully disable it with **Disable All Telemetry** (requires restarting the app).
+Local development builds never upload to Sentry. See the
+[Telemetry guide](https://github.com/smallketchup82/ZkMacOS/wiki/Telemetry) for
+collected data, attachment choices, and privacy details.
+
 ## AI disclosure
 
 ZkMacOS's macOS port changes, build tooling, and documentation were developed

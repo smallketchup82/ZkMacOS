@@ -35,9 +35,10 @@ for _, platform in ipairs({"MacOS", "MacOSX"}) do
 		for _, name in ipairs({"Replay and game timestamp", "Full logs", "Engine screenshot", "Configuration data"}) do
 			assert(controls["Include " .. name] and not controls["Include " .. name].checked)
 		end
-		assert(not crash.checked and not errors.checked and not disable.checked)
+		assert(crash.checked and not errors.checked and not disable.checked)
 		errors:SetToggle(true)
-		assert(engine.MacAutomaticErrorReporting == 1 and not crash.checked)
+		assert(engine.MacAutomaticErrorReporting == 1 and crash.checked)
+		crash:SetToggle(false)
 		crash:SetToggle(true)
 		assert(engine.MacAutomaticCrashReporting == 1)
 		disable:SetToggle(true)
