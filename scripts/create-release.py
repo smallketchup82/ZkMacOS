@@ -118,8 +118,15 @@ def run_checks(display):
                  '--with', 'rich==14.2.0', 'python', 'tests/check-appcast.py'])
     display.run(['swiftc', '-D', 'UPDATE_CHECK_TESTS', '-framework', 'AppKit', '-F', '.cache/sparkle-2.10.1',
                  '-framework', 'Sparkle', '-Xlinker', '-rpath', '-Xlinker', str(ROOT / '.cache/sparkle-2.10.1'),
+                 ROOT / 'app/CrashReporting.swift',
                  'app/main.swift', 'tests/check-updates.swift', '-o', 'build/check-updates'])
     display.run(['build/check-updates'])
+    display.run(['swiftc', '-module-cache-path', 'build/swift-cache', '-D', 'CRASH_REPORT_TESTS',
+                 '-framework', 'AppKit', '-F', '.cache/sparkle-2.10.1', '-framework', 'Sparkle',
+                 '-Xlinker', '-rpath', '-Xlinker', str(ROOT / '.cache/sparkle-2.10.1'),
+                 'app/main.swift', 'app/CrashReporting.swift', 'tests/check-crash-reporting.swift',
+                 '-o', 'build/check-crash-reporting'])
+    display.run(['build/check-crash-reporting'])
 
 
 def verify_dmg(display, tag, build_number):

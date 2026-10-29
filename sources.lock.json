@@ -9,7 +9,7 @@
   },
   "chobby": {
     "url": "https://github.com/smallketchup82/Chobby.git",
-    "revision": "dfe8547c2f32eadf909003708815d709a7a0385d",
+    "revision": "52599801420b392544993f95ba2f7ca9bf326d96",
     "branch": "macos-port"
   },
   "infrastructure": {

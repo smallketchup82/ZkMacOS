@@ -96,7 +96,8 @@ shutil.copytree(sparkle / 'Sparkle.framework', frameworks / 'Sparkle.framework',
 copy(sparkle / 'LICENSE', resources / 'licenses/Sparkle-MIT.txt')
 subprocess.run(['swiftc', '-O', '-module-cache-path', str(build / 'swift-cache'), '-target', 'arm64-apple-macos26.0', '-framework', 'AppKit', '-F', str(frameworks), '-framework', 'Sparkle',
                 '-Xlinker', '-rpath', '-Xlinker', '@loader_path/../Frameworks',
-                str(root / 'app/main.swift'), '-o', str(contents / 'MacOS/Zero-K')], check=True)
+                '-g', str(root / 'app/main.swift'), str(root / 'app/CrashReporting.swift'), '-o', str(contents / 'MacOS/Zero-K')], check=True)
+subprocess.run(['dsymutil', str(contents / 'MacOS/Zero-K'), '-o', str(build / 'Zero-K.app.dSYM')], check=True)
 iconset = build / 'Zero-K.iconset'
 iconset.mkdir(exist_ok=True)
 icon = root / 'external/infrastructure/presskit/images/icon.png'
@@ -139,6 +140,14 @@ dotnet = Path(shutil.which('dotnet')).resolve().parent
 for name in ('LICENSE.txt', 'ThirdPartyNotices.txt'):
     copy(dotnet / name, resources / 'licenses' / ('dotnet-' + name))
 copy(root / 'sources.lock.json', resources / 'sources.lock.json')
+pins = json.loads((root / 'sources.lock.json').read_text())
+port_build = {'app_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip(),
+              'app_version': version, 'app_build': info['CFBundleVersion'],
+              'engine_version': pins['recoil']['engine_version']}
+for name in ('recoil', 'chobby', 'infrastructure'):
+    port_build[name + '_commit'] = subprocess.check_output(
+        ['git', 'rev-parse', 'HEAD'], cwd=root / 'external' / name, text=True).strip()
+(resources / 'port-build.json').write_text(json.dumps(port_build, indent=2) + '\n')
 copy(root / 'assets.lock.json', resources / 'assets.lock.json')
 inventory = []
 for target, source in sorted(native_files.items()):

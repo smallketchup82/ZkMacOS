@@ -12,6 +12,10 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegat
     var childStatus: Int32 = 0
     var pendingInstall: (() -> Void)?
     var exitTimer: Timer?
+    var reporting: CrashReporting?
+    var reportTimer: Timer?
+    var finishingReports = false
+    var crashReportReadyAfter: Date?
     lazy var updaterController = SPUStandardUpdaterController(
         startingUpdater: false, updaterDelegate: self, userDriverDelegate: nil)
 
@@ -35,6 +39,10 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegat
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        reporting?.scan(allowPrompt: true)
+        reportTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            self?.reporting?.scan()
+        }
         guard updatesEnabled, Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") != nil else { return }
         DistributedNotificationCenter.default().addObserver(
             self, selector: #selector(checkForUpdatesFromGame(_:)),
@@ -89,10 +97,11 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegat
 
     func childDidExit(_ status: Int32) {
         childStatus = status
+        if status != 0 { crashReportReadyAfter = Date().addingTimeInterval(3) }
         finishWhenGameExits()
         // A helper can exit before its engine. Wait for both before letting
         // Sparkle's installer observe bootstrap termination.
-        if gameIsRunning() {
+        if gameIsRunning() || crashReportReadyAfter != nil {
             exitTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
                 self?.finishWhenGameExits()
             }
@@ -101,8 +110,27 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegat
 
     func finishWhenGameExits() {
         guard !gameIsRunning() else { return }
+        if let ready = crashReportReadyAfter, Date() < ready { return }
+        guard !finishingReports else { return }
+        finishingReports = true
         exitTimer?.invalidate()
         exitTimer = nil
+        reportTimer?.invalidate()
+        if let reporting {
+            reporting.scan(allowPrompt: true) { [self] in finishTermination() }
+        } else {
+            finishTermination()
+        }
+    }
+
+    func finishTermination() {
+        guard !gameIsRunning() else {
+            finishingReports = false
+            exitTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+                self?.finishWhenGameExits()
+            }
+            return
+        }
         if let install = pendingInstall {
             pendingInstall = nil
             install()
@@ -155,7 +183,9 @@ func showStartupWarning(in data: URL) throws {
     try JSONEncoder().encode(versions).write(to: acknowledgments, options: .atomic)
 }
 
-#if UPDATE_CHECK_TESTS
+#if CRASH_REPORT_TESTS
+CrashReportChecks.run()
+#elseif UPDATE_CHECK_TESTS
 UpdateChecks.run()
 #else
 // The engine owns the game window and Dock entry. This bootstrap stays hidden.
@@ -168,6 +198,7 @@ let engine = contents.appendingPathComponent("MacOS/spring")
 let client = resources.appendingPathComponent("client")
 let data = ProcessInfo.processInfo.environment["ZKMACOS_DATA_DIR"].map { URL(fileURLWithPath: $0) }
     ?? files.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Zero-K")
+let reporting = CrashReporting(data: data)
 
 do {
     try files.createDirectory(at: data, withIntermediateDirectories: true)
@@ -203,6 +234,7 @@ do {
     if !engineOnly { try showStartupWarning(in: data) }
     let helper = client.appendingPathComponent("Zero-K-Helper")
     let delegate = LauncherDelegate()
+    delegate.reporting = reporting
     if !engineOnly, Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") != nil {
         environment["ZEROK_UPDATE_REQUEST_ID"] = delegate.updateRequestID
         environment["ZEROK_AUTOMATIC_UPDATE_CHECKS"] = delegate.updaterController.updater.automaticallyChecksForUpdates ? "1" : "0"
