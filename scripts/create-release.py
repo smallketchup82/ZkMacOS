@@ -144,8 +144,7 @@ def verify_dmg(display, tag, build_number):
 
 
 def create_draft(display, tag, commit, notes_file):
-    assets = [ROOT / 'dist' / name for name in (ASSET, ASSET + '.sha256', 'appcast.xml',
-              'sources.lock.json', 'assets.lock.json', 'native-dependencies.json', 'client-build.json', 'app-audit.json', 'release-build.json')]
+    assets = [ROOT / 'dist' / name for name in (ASSET, ASSET + '.sha256', 'appcast.xml')]
     display.run(['gh', 'release', 'create', tag, '--repo', REPOSITORY, '--target', commit,
                  '--title', tag, '--draft', '--generate-notes', '--notes-file', notes_file, *assets])
     release = json.loads(subprocess.check_output(['gh', 'release', 'view', tag, '--repo', REPOSITORY,

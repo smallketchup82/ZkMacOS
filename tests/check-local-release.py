@@ -35,10 +35,9 @@ class LocalReleaseChecks(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'does not match'):
             release.check_key(secret, base64.b64encode(bytes(32)).decode())
 
-    def test_release_is_a_draft_with_version_title_and_all_artifacts(self):
+    def test_release_is_a_draft_with_version_title_and_only_download_artifacts(self):
         display = Mock()
-        expected = [release.ASSET, release.ASSET + '.sha256', 'appcast.xml', 'sources.lock.json',
-                    'assets.lock.json', 'native-dependencies.json', 'client-build.json', 'app-audit.json', 'release-build.json']
+        expected = [release.ASSET, release.ASSET + '.sha256', 'appcast.xml']
         metadata = {'isDraft': True, 'assets': [{'name': name} for name in expected],
                     'url': 'https://github.com/smallketchup82/ZkMacOS/releases/tag/untagged-test'}
         with patch.object(release.subprocess, 'check_output', return_value=json.dumps(metadata)):
@@ -51,7 +50,8 @@ class LocalReleaseChecks(unittest.TestCase):
         self.assertIn('--draft', command)
         self.assertNotIn('--draft=false', command)
         self.assertTrue(url.endswith('/releases/edit/untagged-test'))
-        self.assertEqual({Path(arg).name for arg in command[-len(expected):]}, set(expected))
+        uploaded = [Path(arg).name for arg in command if Path(arg).parent == release.ROOT / 'dist']
+        self.assertCountEqual(uploaded, expected)
         metadata['assets'].pop()
         with patch.object(release.subprocess, 'check_output', return_value=json.dumps(metadata)):
             with self.assertRaisesRegex(ValueError, 'uploads are missing'):
