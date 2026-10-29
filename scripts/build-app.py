@@ -95,10 +95,11 @@ sparkle = root / '.cache/sparkle-2.10.1'
 shutil.copytree(sparkle / 'Sparkle.framework', frameworks / 'Sparkle.framework', symlinks=True)
 copy(sparkle / 'LICENSE', resources / 'licenses/Sparkle-MIT.txt')
 launcher_object = build / 'Zero-K-launcher.o'
+reporting_flags = ['-D', 'ZKMACOS_RELEASE_REPORTING'] if os.environ.get('ZKMACOS_RELEASE_BUILD') == '1' else []
 subprocess.run(['swiftc', '-O', '-g', '-whole-module-optimization', '-c',
                 '-module-cache-path', str(build / 'swift-cache'), '-target', 'arm64-apple-macos26.0',
                 '-framework', 'AppKit', '-F', str(frameworks), '-framework', 'Sparkle',
-                str(root / 'app/main.swift'), str(root / 'app/CrashReporting.swift'), '-o', str(launcher_object)], check=True)
+                *reporting_flags, str(root / 'app/main.swift'), str(root / 'app/CrashReporting.swift'), '-o', str(launcher_object)], check=True)
 subprocess.run(['swiftc', '-target', 'arm64-apple-macos26.0', '-framework', 'AppKit', '-F', str(frameworks), '-framework', 'Sparkle',
                 '-Xlinker', '-rpath', '-Xlinker', '@loader_path/../Frameworks',
                 str(launcher_object), '-o', str(contents / 'MacOS/Zero-K')], check=True)
@@ -149,6 +150,7 @@ pins = json.loads((root / 'sources.lock.json').read_text())
 port_build = {'app_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip(),
               'app_version': version, 'app_build': info['CFBundleVersion'],
               'engine_version': pins['recoil']['engine_version']}
+port_build['build_kind'] = 'release' if reporting_flags else 'development'
 for name in ('recoil', 'chobby', 'infrastructure'):
     port_build[name + '_commit'] = subprocess.check_output(
         ['git', 'rev-parse', 'HEAD'], cwd=root / 'external' / name, text=True).strip()

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Getting help
+    url: https://github.com/smallketchup82/ZkMacOS/wiki/Getting-Help
+    about: Questions, installation help, and troubleshooting

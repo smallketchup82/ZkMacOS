@@ -121,12 +121,13 @@ def run_checks(display):
                  ROOT / 'app/CrashReporting.swift',
                  'app/main.swift', 'tests/check-updates.swift', '-o', 'build/check-updates'])
     display.run(['build/check-updates'])
-    display.run(['swiftc', '-module-cache-path', 'build/swift-cache', '-D', 'CRASH_REPORT_TESTS',
-                 '-framework', 'AppKit', '-F', '.cache/sparkle-2.10.1', '-framework', 'Sparkle',
-                 '-Xlinker', '-rpath', '-Xlinker', str(ROOT / '.cache/sparkle-2.10.1'),
-                 'app/main.swift', 'app/CrashReporting.swift', 'tests/check-crash-reporting.swift',
-                 '-o', 'build/check-crash-reporting'])
-    display.run(['build/check-crash-reporting'])
+    for suffix, flags in (('release', ['-D', 'ZKMACOS_RELEASE_REPORTING']), ('development', [])):
+        binary = 'build/check-reporting-' + suffix
+        display.run(['swiftc', '-module-cache-path', 'build/swift-cache', '-D', 'CRASH_REPORT_TESTS', *flags,
+                     '-framework', 'AppKit', '-F', '.cache/sparkle-2.10.1', '-framework', 'Sparkle',
+                     '-Xlinker', '-rpath', '-Xlinker', str(ROOT / '.cache/sparkle-2.10.1'),
+                     'app/main.swift', 'app/CrashReporting.swift', 'tests/check-crash-reporting.swift', '-o', binary])
+        display.run([binary])
 
 
 def verify_dmg(display, tag, build_number):
@@ -199,7 +200,7 @@ def main():
             display.console.print('Preflight passed. Nothing built, uploaded or published.', markup=False)
             return
         environment = {'ZKMACOS_VERSION': tag, 'ZKMACOS_BUILD_NUMBER': build_number,
-                       'SPARKLE_PUBLIC_ED_KEY': public_key, 'ZKMACOS_BUILD_RAW': '1'}
+                       'SPARKLE_PUBLIC_ED_KEY': public_key, 'ZKMACOS_BUILD_RAW': '1', 'ZKMACOS_RELEASE_BUILD': '1'}
         display.step(2, 'Build and audit the app using local caches')
         display.run(['bash', 'scripts/build-app.sh'], env=environment)
         display.step(3, 'Run settings, updater and release checks')

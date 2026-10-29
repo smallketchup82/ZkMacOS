@@ -14,6 +14,7 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegat
     var exitTimer: Timer?
     var reporting: CrashReporting?
     var reportTimer: Timer?
+    var reportTicks = 0
     var finishingReports = false
     var crashReportReadyAfter: Date?
     lazy var updaterController = SPUStandardUpdaterController(
@@ -40,8 +41,11 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegat
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         reporting?.scan(allowPrompt: true)
-        reportTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            self?.reporting?.scan()
+        reportTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            reporting?.pollManualRequest()
+            reportTicks += 1
+            if reportTicks % 30 == 0 { reporting?.scan() }
         }
         guard updatesEnabled, Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") != nil else { return }
         DistributedNotificationCenter.default().addObserver(

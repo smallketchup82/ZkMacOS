@@ -1,0 +1,37 @@
+name: Bug report
+description: Report a problem with the macOS port
+title: "[Bug]: "
+body:
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: App release/commit, macOS version, chip, engine/lobby commits, game or mod name/version, map, and game ID if available.
+      placeholder: Use Telemetry → Report a Bug in the lobby to prefill this section.
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened, what did you expect, and how often does it happen?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List what you did before the problem. If it is intermittent or cannot be reproduced, say so.
+      placeholder: "1.\n2.\n3."
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Screenshots & Files
+      description: Sentry report ID, replay timestamp, screenshots, or relevant logs. Uploaded Sentry files are private to the maintainer; GitHub attachments are public. Review files for private information.
+  - type: textarea
+    id: comparison
+    attributes:
+      label: Workarounds and comparisons
+      description: Does disabling experimental graphics options help? Does it happen on other platforms or with another version?

@@ -27,6 +27,7 @@ jobs:
       SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
       BUILD_JOBS: '2'
       ZKMACOS_BUILD_NUMBER: ${{ github.run_number }}
+      ZKMACOS_RELEASE_BUILD: '1'
       HOMEBREW_NO_AUTO_UPDATE: '1'
       HOMEBREW_NO_INSTALL_CLEANUP: '1'
       UV_CACHE_DIR: ${{ github.workspace }}/build/uv-cache
@@ -126,7 +127,7 @@ jobs:
           uv run --no-project --python python3 python tests/check-release-version.py
           swiftc -D UPDATE_CHECK_TESTS -framework AppKit -F .cache/sparkle-2.10.1 -framework Sparkle \
             -Xlinker -rpath -Xlinker "$PWD/.cache/sparkle-2.10.1" \
-            app/main.swift tests/check-updates.swift -o build/check-updates
+            app/main.swift app/CrashReporting.swift tests/check-updates.swift -o build/check-updates
           build/check-updates
           uv run --no-project --python python3 --with cryptography==46.0.3 python tests/check-appcast.py
           uv run --no-project --python python3 --with cryptography==46.0.3 --with rich==14.2.0 python tests/check-local-release.py

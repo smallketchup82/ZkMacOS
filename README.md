@@ -33,7 +33,7 @@ or newer**.
 | Optional notchful fullscreen | Covers the camera-housing area and adapts the resource bar to the active notch; ordinary fullscreen/windowed layouts remain available. |
 | Native in-app updates | Sparkle verifies signed updates hosted on GitHub and defers installation until the game exits. |
 | Configurable start announcements | Separate toggles for an all-chat ZkMacOS notice and a shared marker at your commander's spawn. |
-| Optional macOS-port reporting | Separate automatic crash/error switches, per-crash consent, and a restart-required switch that disables all Sentry communication. |
+| Optional macOS-port reporting | A Telemetry tab with automatic crash/error controls, optional attachments, manual bug reports and a restart-required master switch. Development builds never upload to Sentry. |
 
 This keeps Zero-K's own Chobby lobby, multiplayer, spectating, downloads, and AI
 skirmishes. Those are existing Zero-K features; this project makes them usable
