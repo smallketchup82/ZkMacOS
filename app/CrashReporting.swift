@@ -95,7 +95,7 @@ final class CrashReporting {
     static func logErrors(_ text: String) -> [String] {
         // Return constants, never the original line (which may contain user paths).
         var errors = knownErrors.filter { text.contains($0) }
-        let widgets = ["gui_macos_display.lua", "gui_macos_trackpad.lua", "gui_macos_announcement.lua"]
+        let widgets = ["gui_macos_display.lua", "gui_macos_trackpad.lua", "gui_macos_announcement.lua", "gui_macos_reporting.lua"]
         for line in text.split(separator: "\n") where line.contains("Error in ") || line.contains("Lua error:") {
             for widget in widgets where line.contains("/" + widget) {
                 let error = "macOS widget error: " + widget
@@ -337,6 +337,7 @@ extension CrashReporting {
         guard let bytes = boundedFile(data.appendingPathComponent("macos-report-game.json")),
               let context = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
               let observed = context["observed_at"] as? Double,
+              let started = context["started_at"] as? Double, started <= incident.timeIntervalSince1970,
               abs(observed - incident.timeIntervalSince1970) <= 15 else { return nil }
         var result: [String: Any] = [:]
         for key in ["game", "version", "map", "game_id", "replay"] {
@@ -497,7 +498,17 @@ extension CrashReporting {
                     choice = review.runModal()
                 }
                 try? FileManager.default.removeItem(at: folder)
-                guard choice == .alertFirstButtonReturn else { completion(); return }
+                guard choice == .alertFirstButtonReturn else {
+                    if crash {
+                        queue.async { [self] in
+                            var declined = defaults.stringArray(forKey: "MacOSDeclinedIncidents") ?? []
+                            declined.append(key)
+                            defaults.set(Array(declined.suffix(1000)), forKey: "MacOSDeclinedIncidents")
+                            completion()
+                        }
+                    } else { completion() }
+                    return
+                }
                 queue.async { [self] in
                     let id = send(event, key: key, selection: selection, prepared: files)
                     DispatchQueue.main.async { [self] in
