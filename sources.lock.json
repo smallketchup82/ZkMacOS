@@ -21,7 +21,8 @@
       "chobby-metalfx-spatial.patch": "ae848f22a0b9834136effd44a1f601b7f2889d56e70d44befed19e36604283f4",
       "chobby-macos-notch.patch": "ff7ddc704342c826bcf0b2779a7eb12e8de3dcd70dd944e791e456735129ad19",
       "chobby-macos-hdr.patch": "14b7d1fb47a8e5e8f259df8341c36b645312ba1bc565f9cf0b5ae0dc2e8ad714",
-      "chobby-macos-display-link.patch": "8699f9c97a833a7783ea8e98299f81826f4584ea199ba8d6e7f3ba9e5b31fb2b"
+      "chobby-macos-display-link.patch": "8699f9c97a833a7783ea8e98299f81826f4584ea199ba8d6e7f3ba9e5b31fb2b",
+      "chobby-macos-announcement.patch": "46e384001a2ccbbf25fc94dc550e554191387d0cffbb78f6fef81c5624544481"
     }
   },
   "infrastructure": {

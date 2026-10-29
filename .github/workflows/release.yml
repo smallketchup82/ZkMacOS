@@ -117,6 +117,7 @@ jobs:
           luajit tests/check-settings.lua
           luajit tests/check-display-sync.lua
           luajit tests/check-trackpad-settings.lua
+          luajit tests/check-macos-announcement.lua
           luajit tests/check-metalfx-settings.lua
           luajit tests/check-hdr-settings.lua
           luajit tests/check-gpu-sharing-settings.lua

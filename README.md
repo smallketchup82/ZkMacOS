@@ -169,6 +169,7 @@ saved in `startup-warning-versions.json` in your Application Support data.
 | Lock Cursor to Window | Disabled |
 | Native FPS counter | Enabled |
 | macOS HDR display output | Disabled |
+| ZkMacOS start message and commander marker | Both enabled; toggle separately in lobby Settings → Game |
 | VSync | Forced on |
 
 ### Where your data lives
@@ -395,6 +396,7 @@ pins. Source preparation preserves local checkout changes.
 luajit tests/check-settings.lua
 luajit tests/check-display-sync.lua
 luajit tests/check-trackpad-settings.lua
+luajit tests/check-macos-announcement.lua
 uv run --python python3 tests/check-cask.py
 uv run --no-project --python python3 --with cryptography==46.0.3 python tests/check-appcast.py
 swiftc -D UPDATE_CHECK_TESTS -framework AppKit -F .cache/sparkle-2.10.1 -framework Sparkle \
