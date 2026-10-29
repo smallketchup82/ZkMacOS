@@ -94,9 +94,14 @@ native_files.update(libraries.bundle(helper_roots, resources / 'client', 'arm64'
 sparkle = root / '.cache/sparkle-2.10.1'
 shutil.copytree(sparkle / 'Sparkle.framework', frameworks / 'Sparkle.framework', symlinks=True)
 copy(sparkle / 'LICENSE', resources / 'licenses/Sparkle-MIT.txt')
-subprocess.run(['swiftc', '-O', '-module-cache-path', str(build / 'swift-cache'), '-target', 'arm64-apple-macos26.0', '-framework', 'AppKit', '-F', str(frameworks), '-framework', 'Sparkle',
+launcher_object = build / 'Zero-K-launcher.o'
+subprocess.run(['swiftc', '-O', '-g', '-whole-module-optimization', '-c',
+                '-module-cache-path', str(build / 'swift-cache'), '-target', 'arm64-apple-macos26.0',
+                '-framework', 'AppKit', '-F', str(frameworks), '-framework', 'Sparkle',
+                str(root / 'app/main.swift'), str(root / 'app/CrashReporting.swift'), '-o', str(launcher_object)], check=True)
+subprocess.run(['swiftc', '-target', 'arm64-apple-macos26.0', '-framework', 'AppKit', '-F', str(frameworks), '-framework', 'Sparkle',
                 '-Xlinker', '-rpath', '-Xlinker', '@loader_path/../Frameworks',
-                '-g', str(root / 'app/main.swift'), str(root / 'app/CrashReporting.swift'), '-o', str(contents / 'MacOS/Zero-K')], check=True)
+                str(launcher_object), '-o', str(contents / 'MacOS/Zero-K')], check=True)
 subprocess.run(['dsymutil', str(contents / 'MacOS/Zero-K'), '-o', str(build / 'Zero-K.app.dSYM')], check=True)
 iconset = build / 'Zero-K.iconset'
 iconset.mkdir(exist_ok=True)
