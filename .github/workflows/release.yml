@@ -129,6 +129,7 @@ jobs:
             app/main.swift tests/check-updates.swift -o build/check-updates
           build/check-updates
           uv run --no-project --python python3 --with cryptography==46.0.3 python tests/check-appcast.py
+          uv run --no-project --python python3 --with cryptography==46.0.3 --with rich==14.2.0 python tests/check-local-release.py
       - name: Build the styled DMG without Finder automation
         run: ./scripts/build-dmg.sh
       - name: Sign the DMG and generate the signed Sparkle feed
@@ -171,7 +172,7 @@ jobs:
           EOF
           printf '\nSource commit: %s\n' "$GITHUB_SHA" >> build/release-notes.md
           gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "ZkMacOS $RELEASE_TAG" --draft --generate-notes --notes-file build/release-notes.md \
+            --title "$RELEASE_TAG" --draft --generate-notes --notes-file build/release-notes.md \
             dist/Zero-K-macOS-arm64.dmg dist/Zero-K-macOS-arm64.dmg.sha256 dist/appcast.xml
           gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
           printf '\n[Download release](https://github.com/%s/releases/tag/%s)\n' "$GITHUB_REPOSITORY" "$RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"

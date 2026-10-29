@@ -487,62 +487,76 @@ CI checks do not replace GPU playtesting, multiplayer synchronization testing,
 or installation testing on another Mac. Review the workflow logs and keep the
 known limitations in release notes current.
 
-### Manual release from a local build
+### Local release (recommended)
 
-1. Commit and push the matching fork changes, then update `sources.lock.json`.
-   Use clean checkouts matching those pins for a release.
-2. Set `ZKMACOS_VERSION` to the intended CalVer tag and `ZKMACOS_BUILD_NUMBER`
-   to a number higher than the last published app's `CFBundleVersion` (CI uses
-   its increasing workflow run number). Set `SPARKLE_PUBLIC_ED_KEY` to the
-   production public key, then build and audit the app:
+Build and prepare a release locally with one command:
 
-   ```sh
-   ./scripts/build-app.sh
-   uv run --python python3 scripts/audit-app.py
-   ```
+```sh
+./scripts/create-release.py --iterm
+```
 
-3. Run the settings and smoke tests above. Test installation from the DMG on
-   another supported Mac without developer dependencies, and test multiplayer
-   synchronization against the matching Windows/Linux engine. Record the
-   hardware, macOS version, and known limitations with the release.
-4. Create the DMG separately, in a logged-in macOS desktop session:
+Authenticate once with `gh auth login` and install the dependencies in `Brewfile`.
+Run from a clean `main` matching GitHub `main`; the pinned engine, lobby, helper
+and CircuitAI checkouts must match their patches. The script uses your existing
+local engine/Mesa/compiler caches, so unchanged native code is not rebuilt.
+The GitHub Actions build workflow remains available for optional use.
 
-   ```sh
-   ./scripts/build-dmg.sh
-   ```
+No version, build number, release title, or key input is needed. The script:
 
-   Allow Finder automation if prompted. The script uses
-   [create-dmg](https://github.com/create-dmg/create-dmg) to save the background,
-   arrow, icon positions, and Applications shortcut. It produces:
+1. Checks the existing GitHub CLI login and verifies the production signing key.
+2. Chooses the next `YYYYMM.DD.PATCH` using the Toronto date and all GitHub
+   releases and tags, including drafts. Chooses a Sparkle build number above
+   every existing release/draft appcast.
+3. Builds and audits the app, then runs the settings, updater and release checks.
+4. Creates the styled DMG without Finder automation prompts, signs the DMG and
+   appcast, and mounts the image read-only to audit the actual packaged app.
+5. Uploads the DMG, checksum, signed appcast, source locks, dependency inventory,
+   client metadata and audit/build reports to an **unpublished draft**. The
+   release title is only the version number, such as `202610.29.0`.
+6. Opens that draft's edit page in your browser. Edit the description and click
+   **Publish release** when ready; publish as a stable release marked **Latest**
+   to update the Sparkle channel and trigger the Homebrew cask workflow.
 
-   ```text
-   dist/Zero-K-macOS-arm64.dmg
-   dist/Zero-K-macOS-arm64.dmg.sha256
-   ```
+By default the signing backup is read from
+`~/.config/zkmacos/sparkle-private-key`; its public half must match GitHub's
+`SPARKLE_PUBLIC_ED_KEY` repository variable. The script never generates a new
+key. Use `--private-key-file /secure/path` or `SPARKLE_PRIVATE_KEY_FILE` to select
+another backup. Existing `SPARKLE_PRIVATE_ED_KEY` and `SPARKLE_PUBLIC_ED_KEY`
+environment variables are also supported. Private keys are never passed in
+command-line arguments, written to build logs or uploaded with the artifacts.
 
-5. Set `SPARKLE_PRIVATE_ED_KEY` to the private key export when signing, then
-   generate the feed **after** the final DMG is built:
+To supply your own Markdown before editing the draft:
 
-   ```sh
-   uv run --python python3 scripts/generate-appcast.py
-   ```
+```sh
+./scripts/create-release.py --iterm --notes-file /path/to/release-notes.md
+```
 
-   This validates the key pair, signs the DMG, and signs `dist/appcast.xml`.
-   Never modify the DMG or feed afterward without regenerating signatures.
-   Upload `appcast.xml` alongside the DMG and checksum before publishing.
-   Sparkle reads it from this stable URL:
-   `https://github.com/smallketchup82/ZkMacOS/releases/latest/download/appcast.xml`.
+Other useful options:
 
-6. Create a CalVer release tag using `YYYYMM.DD.PATCH` (for example
-   `202610.27.0`). Use a two-digit day, start the patch at `0`, and increment it
-   for additional releases on the same day. Reset it to `0` on a new date.
-   Attach all three files to a **draft** GitHub release before publishing it.
-   Publish it as a non-prerelease to update the Homebrew channel, with the
-   matching source revisions, patches, build instructions, and third-party
-   notices. The app
-   should contain only static resources; never copy your Application Support
-   profile into it. These builds use ad-hoc signing without a developer
-   certificate or notarization.
+```sh
+./scripts/create-release.py --iterm --check         # Preflight only; no build/upload
+./scripts/create-release.py --iterm --prepare-only  # Signed local artifacts; no draft
+./scripts/create-release.py --no-open               # Print the draft editor URL
+./scripts/build-app.sh --iterm                      # App build only
+```
+
+Omit `--iterm` to run in the current terminal. Both commands show named stages,
+elapsed time, and progress bars using Rich. A **separate Engine compilation bar**
+uses Ninja's completed/total task counts and percentage; compiler messages do
+not advance that bar. A long compile/link task leaves the count unchanged until
+it finishes. Cached builds report that no compilation is needed. Steps without
+measurable progress show a spinner instead of an invented percentage.
+`--verbose` shows full tool output, and `--plain` disables animations. CI and
+redirected output automatically use plain logging. Logs and completion status
+are saved under `build/logs/` (`build.log`, `release.log`, and the corresponding
+`*-result.json` files). A checkout lock prevents simultaneous pipelines from
+replacing one another's outputs. Failed commands stop the pipeline and retain
+the logs and local artifacts for inspection.
+
+The script never publishes automatically. GPU playtesting, multiplayer
+synchronization and installation testing on another supported Mac remain manual
+release validation. These builds use ad-hoc signing without a developer
+certificate or notarization.
 
 The **Update Homebrew cask** workflow downloads the published DMG and checksum,
 verifies them, generates `Casks/zkmacos.rb` with an exact versioned URL and
