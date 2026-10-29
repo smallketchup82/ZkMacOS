@@ -1,4 +1,4 @@
--- Run from ZkMacOS with luajit tests/check-hdr-settings.lua.
+-- Run from ZkMacOS with luajit tests/check-display-link-settings.lua.
 local config = {MacRetinaMode = 1}
 local prompts = 0
 Spring = {

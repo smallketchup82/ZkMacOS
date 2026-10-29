@@ -11,7 +11,8 @@
       "recoil-macos-notch.patch": "ec79b90d25fa2db4bcfa3794962131dfacbf43dda3697110cbcc379d586aed99",
       "recoil-macos-update-menu.patch": "94acbc25f1cfbbbaed40da2ab6a67411d21d1582305f9b5f488fdd7d14805c48",
       "recoil-macos-hdr.patch": "e387d561126e88872b9a7d89e32e4a915c67bb77979380cbecabe95229909c93",
-      "recoil-macos-display-link.patch": "bf60cd179e6208a9153a0b8a626affa6112fe60d0ce95882c4f25b4bd28dbf1c"
+      "recoil-macos-display-link.patch": "bf60cd179e6208a9153a0b8a626affa6112fe60d0ce95882c4f25b4bd28dbf1c",
+      "recoil-macos-frame-pacing.patch": "31da147e842299ed80a9cc4e61a93da271230d2a6d772ed7cfe4d124afe67ad6"
     }
   },
   "chobby": {
@@ -21,7 +22,7 @@
       "chobby-metalfx-spatial.patch": "ae848f22a0b9834136effd44a1f601b7f2889d56e70d44befed19e36604283f4",
       "chobby-macos-notch.patch": "ff7ddc704342c826bcf0b2779a7eb12e8de3dcd70dd944e791e456735129ad19",
       "chobby-macos-hdr.patch": "14b7d1fb47a8e5e8f259df8341c36b645312ba1bc565f9cf0b5ae0dc2e8ad714",
-      "chobby-macos-display-link.patch": "8699f9c97a833a7783ea8e98299f81826f4584ea199ba8d6e7f3ba9e5b31fb2b",
+      "chobby-macos-display-link.patch": "0248ecfc8cc95871d1f205e9ad7c0784c2e516494053776b18fcb1e2b5c90f17",
       "chobby-macos-announcement.patch": "46e384001a2ccbbf25fc94dc550e554191387d0cffbb78f6fef81c5624544481"
     }
   },

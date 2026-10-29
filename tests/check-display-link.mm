@@ -35,7 +35,10 @@ int main()
 			for (int frame = 0; frame < 12; ++frame) {
 				// An unknown SDL refresh rate must restore the system default range.
 				updates += MacMetalFX::WaitForFrame((__bridge void*)layer, frame == 6 ? 0 : 120);
-				assert(MacMetalFX::PresentShared((__bridge void*)layer.device, (__bridge void*)source, (__bridge void*)layer));
+				if (pass == 1)
+					assert(MacMetalFX::PresentPixels(pixels.data(), 640, 400, (__bridge void*)layer));
+				else
+					assert(MacMetalFX::PresentShared((__bridge void*)layer.device, (__bridge void*)source, (__bridge void*)layer));
 			}
 			// Callback cadence depends on occlusion, display rate and system load.
 			assert(updates > 0);
@@ -54,6 +57,6 @@ int main()
 		MacMetalFX::StopDisplayLink();
 		MacMetalFX::Destroy();
 		[window close];
-		std::puts("PASS: display-link callbacks, presentation, bounded hidden-window wait, resize, disable and recreation");
+		std::puts("PASS: display-link callbacks, shared and uploaded presentation, bounded hidden-window wait, resize, disable and recreation");
 	}
 }

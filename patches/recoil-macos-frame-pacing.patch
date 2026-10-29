@@ -1,0 +1,529 @@
+diff --git a/rts/Rendering/GL/MacEGLBridge.cpp b/rts/Rendering/GL/MacEGLBridge.cpp
+index 927e9b1..deac00d 100644
+--- a/rts/Rendering/GL/MacEGLBridge.cpp
++++ b/rts/Rendering/GL/MacEGLBridge.cpp
+@@ -88,6 +88,8 @@ namespace {
+ 	bool sharedPresentLogged = false;
+ 	bool presentedSharedLastFrame = false;
+ 	bool displayLinkLogged = false;
++	bool pixelPresentFailed = false;
++	bool pixelPresentLogged = false;
+ 
+ 	bool hdrFrame = false, hdrFailed = false, hdrLogged = false;
+ 	bool hdrSceneDrawn = false, previousHDRRequest = false, hdrUnavailableLogged = false;
+@@ -105,6 +107,11 @@ namespace {
+ 	using GetMetalTexture = bool (*)(void*, uint64_t, void**, void**);
+ 	GetVkColorBuffer getVkColorBuffer = nullptr;
+ 	GetMetalTexture getMetalTexture = nullptr;
++	using GetMetalQueue = void* (*)(void*);
++	GetMetalQueue getMetalQueue = nullptr;
++	bool (*flushGPU)() = nullptr;
++	bool sharedEventsLogged = false;
++	bool sharedGPUWasEnabled = false;
+ 	void* sharedDriver = nullptr;
+ 	bool sharingChecked = false;
+ 
+@@ -159,27 +166,49 @@ namespace {
+ 		if (!sharingChecked) {
+ 			sharingChecked = true;
+ 			getVkColorBuffer = reinterpret_cast<GetVkColorBuffer>(dlsym(egl.lib, "recoil_mesa_get_vk_color_buffer_v1"));
++			flushGPU = reinterpret_cast<decltype(flushGPU)>(dlsym(egl.lib, "recoil_mesa_flush_gpu_v1"));
+ 			// Only use the ICD already loaded from this same Mesa bundle.
+ 			sharedDriver = dlopen((MesaLibraryDirectory() + "/libvulkan_kosmickrisp.dylib").c_str(), RTLD_NOW | RTLD_LOCAL | RTLD_NOLOAD);
+-			if (sharedDriver)
++			if (sharedDriver) {
+ 				getMetalTexture = reinterpret_cast<GetMetalTexture>(dlsym(sharedDriver, "recoil_kk_get_metal_texture_v1"));
++				getMetalQueue = reinterpret_cast<GetMetalQueue>(dlsym(sharedDriver, "recoil_kk_get_metal_queue_v1"));
++			}
+ 		}
+ 		return getVkColorBuffer && getMetalTexture;
+ 	}
+ 
+ 	bool UseSharedGPU() {
+-		if (configHandler->GetBool("MacGPUSharing") || hdrFrame)
++		if (configHandler->GetBool("MacGPUSharing") || hdrFrame) {
++			sharedGPUWasEnabled = true;
+ 			return true;
++		}
++		if (sharedGPUWasEnabled)
++			MacMetalFX::WaitShared();
++		sharedGPUWasEnabled = false;
+ 		sharedUpscaleFailed = sharedPresentFailed = false;
+ 		sharedPresentLogged = false;
+ 		return false;
+ 	}
+ 
+-	// The caller finishes GL first and keeps the allocation alive until Metal completes.
+-	bool GetSharedColorBuffer(void*& device, void*& nativeTexture) {
++	bool GetSharedColorBuffer(void*& device, void*& nativeTexture, void** nativeQueue = nullptr) {
+ 		void* vkDevice = nullptr;
+ 		uint64_t image = 0;
+-		return getVkColorBuffer(&vkDevice, &image) && getMetalTexture(vkDevice, image, &device, &nativeTexture);
++		if (!getVkColorBuffer(&vkDevice, &image) || !getMetalTexture(vkDevice, image, &device, &nativeTexture))
++			return false;
++		if (nativeQueue)
++			*nativeQueue = getMetalQueue ? getMetalQueue(vkDevice) : nullptr;
++		return true;
++	}
++
++	void* SubmitSharedGPU(void* nativeQueue) {
++		if (nativeQueue && flushGPU && flushGPU()) {
++			if (!sharedEventsLogged)
++				LOG("[MacGPUSharing] GPU event synchronization enabled; no per-frame CPU completion waits");
++			sharedEventsLogged = true;
++			return nativeQueue;
++		}
++		glFinish();
++		return nullptr;
+ 	}
+ 
+ 	void SetupEnvironment() {
+@@ -198,6 +227,8 @@ namespace {
+ 	}
+ 
+ 	bool CreateSurface(int sx, int sy) {
++		MacMetalFX::WaitShared();
++		pixelPresentFailed = false;
+ 		sx = std::max(sx, 1);
+ 		sy = std::max(sy, 1);
+ 
+@@ -476,6 +507,7 @@ namespace Retina {
+ 	}
+ 
+ 	void DestroyHDR() {
++		if (hdrFBO || logicalReadFBO) MacMetalFX::WaitShared();
+ 		if (logicalReadFBO) glDeleteFramebuffers(1, &logicalReadFBO);
+ 		if (logicalReadColor) glDeleteRenderbuffers(1, &logicalReadColor);
+ 		logicalReadFBO = logicalReadColor = 0;
+@@ -577,6 +609,7 @@ namespace Retina {
+ 	}
+ 
+ 	void DestroyScene() {
++		MacMetalFX::WaitShared();
+ 		if (sceneFBO != 0) glDeleteFramebuffers(1, &sceneFBO);
+ 		if (sceneColor != 0) glDeleteRenderbuffers(1, &sceneColor);
+ 		if (sceneDepth != 0) glDeleteRenderbuffers(1, &sceneDepth);
+@@ -585,6 +618,7 @@ namespace Retina {
+ 	}
+ 
+ 	void DestroyUpscaler() {
++		MacMetalFX::WaitShared();
+ 		if (upscaleFBO != 0) glDeleteFramebuffers(1, &upscaleFBO);
+ 		if (upscaleColor != 0) glDeleteTextures(1, &upscaleColor);
+ 		upscaleFBO = upscaleColor = 0;
+@@ -642,17 +676,18 @@ namespace Retina {
+ 			bool success = false;
+ 			const char* reason = "bundled Mesa export interface unavailable";
+ 			if (SharedExportsAvailable()) {
+-				glFinish();
++				glFlush();
+ 				void* device = nullptr;
+ 				void* source = nullptr;
++				void* nativeQueue = nullptr;
+ 				void* outputDevice = nullptr;
+ 				void* output = nullptr;
+-				const bool sourceReady = GetSharedColorBuffer(device, source);
++				const bool sourceReady = GetSharedColorBuffer(device, source, &nativeQueue);
+ 				bindFramebuffer(GL_READ_FRAMEBUFFER, upscaleFBO);
+ 				const bool outputReady = GetSharedColorBuffer(outputDevice, output);
+ 				reason = "scene or output framebuffer is not shareable";
+ 				if (sourceReady && outputReady && device == outputDevice) {
+-					success = MacMetalFX::UpscaleShared(device, source, output);
++					success = MacMetalFX::UpscaleShared(device, source, output, SubmitSharedGPU(nativeQueue));
+ 					reason = MacMetalFX::GetError();
+ 				}
+ 				if (success) {
+@@ -1027,6 +1062,7 @@ void MacEGLBridge::DestroyContext()
+ 	if (context == nullptr)
+ 		return;
+ 	MacMetalFX::StopDisplayLink();
++	MacMetalFX::WaitShared();
+ 
+ 	if (texture != nullptr)
+ 		SDL_DestroyTexture(texture);
+@@ -1079,7 +1115,7 @@ void MacEGLBridge::WaitForFrame()
+ {
+ 	if (context == nullptr || renderer == nullptr)
+ 		return;
+-	if (!configHandler->GetBool("MacDisplayLink") || (!configHandler->GetBool("MacGPUSharing") && !configHandler->GetBool("MacHDR")) || sharedPresentFailed) {
++	if (!configHandler->GetBool("MacDisplayLink") || pixelPresentFailed) {
+ 		MacMetalFX::StopDisplayLink();
+ 		displayLinkLogged = false;
+ 		return;
+@@ -1115,17 +1151,18 @@ void MacEGLBridge::SwapWindow(SDL_Window* window)
+ 		bool success = false;
+ 		const char* reason = "bundled Mesa export interface unavailable";
+ 		if (SharedExportsAvailable()) {
+-			glFinish();
++			glFlush();
+ 			void* device = nullptr;
+ 			void* source = nullptr;
++			void* nativeQueue = nullptr;
+ 			reason = "presentation framebuffer is not shareable";
+-			if (GetSharedColorBuffer(device, source)) {
++			if (GetSharedColorBuffer(device, source, &nativeQueue)) {
+ 				const float headroom = hdrFrame ? MacMetalFX::HDRHeadroom(NativeWindow()) : 0.0f;
+ 				if (hdrFrame && std::abs(headroom - loggedHDRHeadroom) >= 0.25f) {
+ 					LOG("[MacHDR] display brightness headroom %.2fx SDR white", headroom);
+ 					loggedHDRHeadroom = headroom;
+ 				}
+-				success = MacMetalFX::PresentShared(device, source, SDL_RenderGetMetalLayer(renderer), headroom);
++				success = MacMetalFX::PresentShared(device, source, SDL_RenderGetMetalLayer(renderer), headroom, SubmitSharedGPU(nativeQueue));
+ 				reason = MacMetalFX::GetError();
+ 			}
+ 		}
+@@ -1205,6 +1242,7 @@ void MacEGLBridge::SwapWindow(SDL_Window* window)
+ 
+ 	const int px = pboSizes[prv][0];
+ 	const int py = pboSizes[prv][1];
++	bool presentedPixels = false;
+ 
+ 	if (fences[prv] != nullptr && px > 0 && py > 0) {
+ 		glClientWaitSync(fences[prv], 0, GL_TIMEOUT_IGNORED);
+@@ -1215,7 +1253,19 @@ void MacEGLBridge::SwapWindow(SDL_Window* window)
+ 		const void* data = glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, px * py * 4, GL_MAP_READ_BIT);
+ 
+ 		if (data != nullptr) {
+-			if (texture == nullptr || texSizeX != px || texSizeY != py) {
++			if (!pixelPresentFailed) {
++				presentedPixels = MacMetalFX::PresentPixels(data, px, py, SDL_RenderGetMetalLayer(renderer));
++				if (presentedPixels && !pixelPresentLogged) {
++					LOG("[MacEGLBridge] presenting PBO pixels through reusable Metal textures");
++					pixelPresentLogged = true;
++				} else if (!presentedPixels) {
++					pixelPresentFailed = true;
++					MacMetalFX::StopDisplayLink();
++					MacMetalFX::WaitShared();
++					LOG_L(L_WARNING, "[MacEGLBridge] reusable Metal presentation failed (%s); using SDL upload", MacMetalFX::GetError());
++				}
++			}
++			if (!presentedPixels && (texture == nullptr || texSizeX != px || texSizeY != py)) {
+ 				if (texture != nullptr)
+ 					SDL_DestroyTexture(texture);
+ 				texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, px, py);
+@@ -1225,7 +1275,7 @@ void MacEGLBridge::SwapWindow(SDL_Window* window)
+ 
+ 			void* pixels = nullptr;
+ 			int pitch = 0;
+-			if (texture != nullptr && SDL_LockTexture(texture, nullptr, &pixels, &pitch) == 0) {
++			if (!presentedPixels && texture != nullptr && SDL_LockTexture(texture, nullptr, &pixels, &pitch) == 0) {
+ 				if (pitch == px * 4) {
+ 					memcpy(pixels, data, px * py * 4);
+ 				} else {
+@@ -1245,7 +1295,7 @@ void MacEGLBridge::SwapWindow(SDL_Window* window)
+ 	glPixelStorei(GL_PACK_ROW_LENGTH, prevRowLen);
+ 	glBindFramebuffer(GL_READ_FRAMEBUFFER, prevReadFBO);
+ 
+-	if (texture != nullptr) {
++	if (!presentedPixels && texture != nullptr) {
+ 		SDL_RenderCopyEx(renderer, texture, nullptr, nullptr, 0.0, nullptr, SDL_FLIP_VERTICAL);
+ 		SDL_RenderPresent(renderer);
+ 	}
+diff --git a/rts/Rendering/GL/MacEGLBridge.h b/rts/Rendering/GL/MacEGLBridge.h
+index 7280d44..b0a8e80 100644
+--- a/rts/Rendering/GL/MacEGLBridge.h
++++ b/rts/Rendering/GL/MacEGLBridge.h
+@@ -2,8 +2,8 @@
+ 
+ #pragma once
+ 
+-// Renders through Mesa EGL + Zink and presents shared GPU textures through Metal.
+-// Unpatched graphics libraries retain the SDL readback compatibility path.
++// Renders through Mesa EGL + Zink and presents through reusable Metal textures.
++// Patched Mesa also supports shared GPU textures; SDL remains the upload fallback.
+ 
+ #if defined(__APPLE__) && defined(MAC_EGL_ZINK) && !defined(HEADLESS)
+ 	#define MAC_EGL_BRIDGE_AVAILABLE 1
+@@ -41,9 +41,12 @@ namespace MacMetalFX {
+ 	void StopDisplayLink();
+ 
+ 	bool Upscale(const void* rgba, int width, int height, int outputWidth, int outputHeight, const void*& output, int& outputRowLength);
+-	// Borrowed Mesa resources are used only until this call completes its GPU work.
+-	bool UpscaleShared(void* device, void* input, void* output);
+-	bool PresentShared(void* device, void* input, void* layer, float headroom = 0.0f);
++	// A native Mesa queue enables GPU event synchronization. Without it, wait on the CPU.
++	bool UpscaleShared(void* device, void* input, void* output, void* nativeQueue = nullptr);
++	bool PresentShared(void* device, void* input, void* layer, float headroom = 0.0f, void* nativeQueue = nullptr);
++	bool PresentPixels(const void* rgba, int width, int height, void* layer);
++	// Drain before releasing borrowed Mesa allocations, resizing, or changing paths.
++	void WaitShared();
+ 	bool ConfigureHDR(void* layer, void* nativeWindow, bool enabled);
+ 	float HDRHeadroom(void* nativeWindow);
+ 	const char* GetError();
+diff --git a/rts/Rendering/GL/MacMetalFX.mm b/rts/Rendering/GL/MacMetalFX.mm
+index a418187..3763b7b 100644
+--- a/rts/Rendering/GL/MacMetalFX.mm
++++ b/rts/Rendering/GL/MacMetalFX.mm
+@@ -55,6 +55,14 @@ namespace {
+ 	id<MTLTexture> sharedOutput;
+ 	id<MTLRenderPipelineState> presentPipeline;
+ 	MTLPixelFormat presentFormat = MTLPixelFormatInvalid;
++	id<MTLSharedEvent> mesaReady;
++	id<MTLSharedEvent> metalDone;
++	id<MTLCommandBuffer> pendingShared;
++	uint64_t sharedEventValue = 0;
++	constexpr unsigned int NUM_PRESENT_TEXTURES = 3;
++	id<MTLTexture> presentTextures[NUM_PRESENT_TEXTURES];
++	id<MTLCommandBuffer> presentCommands[NUM_PRESENT_TEXTURES];
++	unsigned int presentIndex = 0;
+ 	__weak CAMetalLayer* hdrLayer;
+ 	MTLPixelFormat sdrFormat = MTLPixelFormatBGRA8Unorm;
+ 	CGColorSpaceRef sdrColorSpace = nullptr;
+@@ -65,11 +73,24 @@ namespace {
+ 		if (!next)
+ 			return false;
+ 		if (next != sharedDevice) {
++			WaitShared();
+ 			sharedScaler = nil;
+ 			sharedOutput = nil;
+ 			presentPipeline = nil;
+ 			sharedDevice = next;
+ 			sharedQueue = [next newCommandQueue];
++			mesaReady = [next newSharedEvent];
++			metalDone = [next newSharedEvent];
++			sharedEventValue = 0;
++			for (unsigned int i = 0; i < NUM_PRESENT_TEXTURES; ++i) {
++				presentTextures[i] = nil;
++				presentCommands[i] = nil;
++			}
++			presentIndex = 0;
++		}
++		if (pendingShared.status == MTLCommandBufferStatusError) {
++			errorMessage = pendingShared.error.localizedDescription ?: @"shared GPU command failed";
++			return false;
+ 		}
+ 		return sharedQueue != nil;
+ 	}
+@@ -88,9 +109,41 @@ namespace {
+ 		return nil;
+ 	}
+ 
+-	bool Complete(id<MTLCommandBuffer> commands)
++	id<MTLCommandBuffer> BeginShared(void* nativeQueue)
++	{
++		id<MTLCommandBuffer> commands = [sharedQueue commandBuffer];
++		if (commands && nativeQueue) {
++			if (@available(macOS 26.0, *)) {
++				if (!mesaReady || !metalDone) {
++					errorMessage = @"could not allocate shared GPU events";
++					return nil;
++				}
++				id<MTL4CommandQueue> mesa = (__bridge id<MTL4CommandQueue>)nativeQueue;
++				[mesa signalEvent:mesaReady value:++sharedEventValue];
++				[commands encodeWaitForEvent:mesaReady value:sharedEventValue];
++			}
++		}
++		return commands;
++	}
++
++	bool Complete(id<MTLCommandBuffer> commands, void* nativeQueue, bool asynchronous = false)
+ 	{
++		if (nativeQueue) {
++			if (@available(macOS 26.0, *)) {
++				[commands encodeSignalEvent:metalDone value:sharedEventValue];
++				[commands commit];
++				id<MTL4CommandQueue> mesa = (__bridge id<MTL4CommandQueue>)nativeQueue;
++				// The next GL submission waits on the GPU before reusing its textures.
++				[mesa waitForEvent:metalDone value:sharedEventValue];
++				pendingShared = commands;
++				return true;
++			}
++		}
+ 		[commands commit];
++		if (asynchronous) {
++			pendingShared = commands;
++			return true;
++		}
+ 		[commands waitUntilCompleted];
+ 		if (commands.status != MTLCommandBufferStatusCompleted) {
+ 			errorMessage = commands.error.localizedDescription ?: @"shared GPU command failed";
+@@ -157,6 +210,12 @@ bool WaitForFrame(void* layerHandle, int refreshRate, bool visible)
+ 	}
+ }
+ 
++void WaitShared()
++{
++	[pendingShared waitUntilCompleted];
++	pendingShared = nil;
++}
++
+ const char* GetError()
+ {
+ 	return errorMessage ? errorMessage.UTF8String : "MetalFX resource allocation failed";
+@@ -165,6 +224,7 @@ const char* GetError()
+ void Destroy()
+ {
+ 	StopDisplayLink();
++	WaitShared();
+ 	scaler = nil;
+ 	inputTexture = nil;
+ 	outputTexture = nil;
+@@ -178,12 +238,20 @@ void Destroy()
+ 	sharedQueue = nil;
+ 	sharedDevice = nil;
+ 	presentFormat = MTLPixelFormatInvalid;
++	mesaReady = nil;
++	metalDone = nil;
++	sharedEventValue = 0;
++	for (unsigned int i = 0; i < NUM_PRESENT_TEXTURES; ++i) {
++		presentTextures[i] = nil;
++		presentCommands[i] = nil;
++	}
++	presentIndex = 0;
+ 	if (hdrLayer) ConfigureHDR((__bridge void*)hdrLayer, nullptr, false);
+ 	if (sdrColorSpace) CGColorSpaceRelease(sdrColorSpace);
+ 	sdrColorSpace = nullptr;
+ }
+ 
+-bool UpscaleShared(void* deviceHandle, void* inputHandle, void* outputHandle)
++bool UpscaleShared(void* deviceHandle, void* inputHandle, void* outputHandle, void* nativeQueue)
+ {
+ 	@autoreleasepool {
+ 		if (!PrepareSharedDevice(deviceHandle))
+@@ -230,7 +298,7 @@ bool UpscaleShared(void* deviceHandle, void* inputHandle, void* outputHandle)
+ 			errorMessage = @"Mesa textures do not provide the usage required by MetalFX";
+ 			return false;
+ 		}
+-		id<MTLCommandBuffer> commands = [sharedQueue commandBuffer];
++		id<MTLCommandBuffer> commands = BeginShared(nativeQueue);
+ 		if (!commands)
+ 			return false;
+ 		sharedScaler.colorTexture = source;
+@@ -247,7 +315,7 @@ bool UpscaleShared(void* deviceHandle, void* inputHandle, void* outputHandle)
+ 				destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
+ 			[blit endEncoding];
+ 		}
+-		const bool success = Complete(commands);
++		const bool success = Complete(commands, nativeQueue);
+ 		// Do not retain borrowed GL allocations across resize or context destruction.
+ 		sharedScaler.colorTexture = nil;
+ 		sharedScaler.outputTexture = nil;
+@@ -270,6 +338,8 @@ bool ConfigureHDR(void* layerHandle, void* nativeWindow, bool enabled)
+ 	const bool available = window.screen.maximumPotentialExtendedDynamicRangeColorComponentValue > 1.0;
+ 	if (enabled && available) {
+ 		if (hdrLayer != layer) {
++			WaitShared();
++			StopDisplayLink();
+ 			if (hdrLayer) ConfigureHDR((__bridge void*)hdrLayer, nullptr, false);
+ 			sdrFormat = layer.pixelFormat;
+ 			if (sdrColorSpace) CGColorSpaceRelease(sdrColorSpace);
+@@ -284,6 +354,8 @@ bool ConfigureHDR(void* layerHandle, void* nativeWindow, bool enabled)
+ 		return true;
+ 	}
+ 	if (hdrLayer == layer) {
++		WaitShared();
++		StopDisplayLink();
+ 		layer.wantsExtendedDynamicRangeContent = NO;
+ 		layer.pixelFormat = sdrFormat;
+ 		layer.colorspace = sdrColorSpace;
+@@ -292,7 +364,7 @@ bool ConfigureHDR(void* layerHandle, void* nativeWindow, bool enabled)
+ 	return false;
+ }
+ 
+-bool PresentShared(void* deviceHandle, void* inputHandle, void* layerHandle, float headroom)
++static bool PresentTexture(void* deviceHandle, void* inputHandle, void* layerHandle, float headroom, void* nativeQueue, bool flipY, bool asynchronous)
+ {
+ 	@autoreleasepool {
+ 		if (!PrepareSharedDevice(deviceHandle))
+@@ -316,12 +388,12 @@ vertex Vertex presentVertex(uint index [[vertex_id]]) {
+     return result;
+ }
+ fragment float4 presentFragment(Vertex interpolated [[stage_in]], texture2d<float> color [[texture(0)]],
+-    constant float& headroom [[buffer(0)]]) {
++    constant float& headroom [[buffer(0)]], constant uint& flipY [[buffer(1)]]) {
+     constexpr sampler sampleColor(filter::linear, address::clamp_to_edge);
+     float2 uv = interpolated.uv;
+     // Zink's pbuffer is presentation-oriented; an offscreen GL framebuffer is
+     // bottom-first. HDR presents that offscreen composition target directly.
+-    if (headroom > 0.0) uv.y = 1.0 - uv.y;
++    if (headroom > 0.0 || flipY) uv.y = 1.0 - uv.y;
+     float3 rgb = max(color.sample(sampleColor, uv).rgb, 0.0);
+     if (headroom > 0.0) {
+         // The game and legacy UI blend in display-referred sRGB. Decode once,
+@@ -356,7 +428,7 @@ fragment float4 presentFragment(Vertex interpolated [[stage_in]], texture2d<floa
+ 		if (displayLinked) frameDrawable = nil;
+ 		if (!drawable)
+ 			return true; // Minimized or occluded windows may not have a drawable.
+-		id<MTLCommandBuffer> commands = [sharedQueue commandBuffer];
++		id<MTLCommandBuffer> commands = BeginShared(nativeQueue);
+ 		if (!commands)
+ 			return false;
+ 		MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
+@@ -369,17 +441,63 @@ fragment float4 presentFragment(Vertex interpolated [[stage_in]], texture2d<floa
+ 		[encoder setRenderPipelineState:presentPipeline];
+ 		[encoder setFragmentTexture:source atIndex:0];
+ 		[encoder setFragmentBytes:&headroom length:sizeof(headroom) atIndex:0];
++		const uint32_t flip = flipY;
++		[encoder setFragmentBytes:&flip length:sizeof(flip) atIndex:1];
+ 		[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+ 		[encoder endEncoding];
+ 		if (!displayLinked) [commands presentDrawable:drawable];
+ 		// GL may overwrite the same pbuffer on the next frame.
+-		const bool success = Complete(commands);
++		const bool success = Complete(commands, nativeQueue, asynchronous);
+ 		if (success && displayLinked) [drawable present];
+ 		if (displayLinked) displayDelegate.frameInProgress = NO;
+ 		return success;
+ 	}
+ }
+ 
++bool PresentShared(void* deviceHandle, void* inputHandle, void* layerHandle, float headroom, void* nativeQueue)
++{
++	return PresentTexture(deviceHandle, inputHandle, layerHandle, headroom, nativeQueue, false, false);
++}
++
++bool PresentPixels(const void* rgba, int width, int height, void* layerHandle)
++{
++	@autoreleasepool {
++		CAMetalLayer* layer = (__bridge CAMetalLayer*)layerHandle;
++		if (!rgba || width <= 0 || height <= 0 || !layer ||
++			!PrepareSharedDevice((__bridge void*)layer.device))
++			return false;
++		const unsigned int slot = presentIndex % NUM_PRESENT_TEXTURES;
++		// Reuse only a completed upload. Normally drawable throttling has already
++		// retired this slot, so no new frame-sized allocation or GPU blit is needed.
++		[presentCommands[slot] waitUntilCompleted];
++		if (presentCommands[slot].status == MTLCommandBufferStatusError) {
++			errorMessage = presentCommands[slot].error.localizedDescription ?: @"pixel presentation command failed";
++			return false;
++		}
++		presentCommands[slot] = nil;
++		id<MTLTexture> texture = presentTextures[slot];
++		if (!texture || texture.width != width || texture.height != height) {
++			MTLTextureDescriptor* descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:
++				MTLPixelFormatRGBA8Unorm width:width height:height mipmapped:NO];
++			descriptor.storageMode = MTLStorageModeShared;
++			descriptor.usage = MTLTextureUsageShaderRead;
++			texture = [sharedDevice newTextureWithDescriptor:descriptor];
++			presentTextures[slot] = texture;
++		}
++		if (!texture) {
++			errorMessage = @"could not allocate reusable presentation texture";
++			return false;
++		}
++		[texture replaceRegion:MTLRegionMake2D(0, 0, width, height) mipmapLevel:0
++			withBytes:rgba bytesPerRow:size_t(width) * 4];
++		if (!PresentTexture((__bridge void*)sharedDevice, (__bridge void*)texture, layerHandle, 0.0f, nullptr, true, true))
++			return false;
++		presentCommands[slot] = pendingShared;
++		++presentIndex;
++		return true;
++	}
++}
++
+ bool Upscale(const void* rgba, int width, int height, int outputWidth, int outputHeight, const void*& output, int& outputRowLength)
+ {
+ 	output = nullptr;
+diff --git a/rts/builds/legacy/CMakeLists.txt b/rts/builds/legacy/CMakeLists.txt
+index b089b00..2aabc88 100644
+--- a/rts/builds/legacy/CMakeLists.txt
++++ b/rts/builds/legacy/CMakeLists.txt
+@@ -91,7 +91,7 @@ if (APPLE AND MAC_EGL_ZINK)
+ 	set(metalfx_source "${ENGINE_SRC_ROOT_DIR}/Rendering/GL/MacMetalFX.mm")
+ 	set(metalfx_object "${CMAKE_CURRENT_BINARY_DIR}/MacMetalFX.o")
+ 	add_custom_command(OUTPUT "${metalfx_object}"
+-		COMMAND xcrun clang++ -std=c++17 -fobjc-arc -arch arm64 -mmacosx-version-min=13.0
++		COMMAND xcrun clang++ -std=c++17 -O2 -g -fobjc-arc -arch arm64 -mmacosx-version-min=26.0
+ 			-DMAC_EGL_ZINK -c "${metalfx_source}" -o "${metalfx_object}"
+ 		DEPENDS "${metalfx_source}" "${ENGINE_SRC_ROOT_DIR}/Rendering/GL/MacEGLBridge.h"
+ 		VERBATIM)

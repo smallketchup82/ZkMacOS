@@ -8,18 +8,58 @@ local started, lastFrame, finished, selected, captured
 local commander, selectionChanges = nil, 0
 local frames = {}
 local warmup, duration = 15, 30
+local replay = Spring.IsReplay()
+local replayTarget, seekRequested, replayStartFrame, replayStartUnits, lastSeekRequest
+local replayDisplayLink
 local GL_VIEWPORT = 0x0BA2
 local camera = {mode = 1, px = Game.mapSizeX / 2, py = 0, pz = Game.mapSizeZ / 2,
 	height = 2500, angle = 0.6, flipped = 0, fov = 45}
 
+-- Keep incidental clicks and shortcuts from changing the measured scene.
+function widget:MousePress() return true end
+function widget:MouseRelease() return -1 end
+function widget:MouseWheel() return true end
+function widget:KeyPress() return true end
+
+local function SeekReplay()
+	if not replay or not replayTarget or started then return end
+	local now = Spring.GetTimerMicros()
+	if lastSeekRequest and Spring.DiffTimers(now, lastSeekRequest, false, true) < 2 then return end
+	Spring.SendCommands("skip " .. math.floor(replayTarget / Game.gameSpeed))
+	lastSeekRequest = now
+	seekRequested = true
+	Spring.Echo("[Benchmark replay seek]", replayTarget)
+end
+
 function widget:Initialize()
 	started = Spring.GetTimerMicros()
+	if replay then
+		local input = assert(io.open("benchmark_replay_start.txt", "r"))
+		replayTarget = assert(tonumber(input:read("*a"))) * Game.gameSpeed
+		input:close()
+		started = nil
+		camera.height = 4000
+		replayDisplayLink = Spring.GetConfigInt("MacDisplayLink", 0)
+		Spring.SetConfigInt("MacDisplayLink", 0)
+		Spring.SendCommands("specfullview 3")
+		-- Start only this local replay server, then fast-forward recorded pregame.
+		Spring.SendCommands("forcestart")
+		SeekReplay()
+	end
 	Spring.SetCameraState(camera, 0)
 end
 
 function widget:Update()
 	Spring.SetCameraState(camera, 0)
-	if not selected and Spring.GetGameFrame() > 30 then
+	if replay then
+		SeekReplay()
+		if seekRequested and not started and Spring.GetGameFrame() >= replayTarget then
+			Spring.SetConfigInt("MacDisplayLink", replayDisplayLink)
+			started = Spring.GetTimerMicros()
+			Spring.SelectUnitArray({})
+			Spring.Echo("[Benchmark selected]", 0)
+		end
+	elseif not selected and Spring.GetGameFrame() > 30 then
 		local units = Spring.GetTeamUnits(Spring.GetMyTeamID())
 		if #units > 0 then
 			Spring.SelectUnitArray(units)
@@ -45,11 +85,18 @@ function widget:Update()
 end
 
 function widget:DrawScreen()
-	if finished then return end
+	-- DrawScreen also runs while the replay is still showing recorded pregame.
+	SeekReplay()
+	if finished or not started then return end
 	local now = Spring.GetTimerMicros()
 	local elapsed = Spring.DiffTimers(now, started, false, true)
 	if elapsed < warmup then return end
-	if not lastFrame then Spring.Echo("[Benchmark viewport]", gl.GetNumber(GL_VIEWPORT, 4)) end
+	if not lastFrame then
+		Spring.Echo("[Benchmark viewport]", gl.GetNumber(GL_VIEWPORT, 4))
+		if replay then
+			replayStartFrame, replayStartUnits = Spring.GetGameFrame(), #Spring.GetAllUnits()
+		end
+	end
 	if lastFrame then
 		frames[#frames + 1] = Spring.DiffTimers(now, lastFrame, true, true)
 	end
@@ -69,4 +116,8 @@ function widget:DrawScreen()
 		Spring.GetCameraState().height)
 	Spring.Echo("[Benchmark selection changes]", selectionChanges)
 	Spring.Echo("[Benchmark selected at end]", #Spring.GetSelectedUnits())
+	if replay then
+		Spring.Echo("[Benchmark replay frames]", replayStartFrame, Spring.GetGameFrame())
+		Spring.Echo("[Benchmark replay units]", replayStartUnits, #Spring.GetAllUnits())
+	end
 end

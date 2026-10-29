@@ -116,6 +116,7 @@ jobs:
         run: |
           luajit tests/check-settings.lua
           luajit tests/check-display-sync.lua
+          luajit tests/check-display-link-settings.lua
           luajit tests/check-trackpad-settings.lua
           luajit tests/check-macos-announcement.lua
           luajit tests/check-metalfx-settings.lua

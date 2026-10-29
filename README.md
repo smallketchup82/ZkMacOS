@@ -169,6 +169,7 @@ saved in `startup-warning-versions.json` in your Application Support data.
 | Lock Cursor to Window | Disabled |
 | Native FPS counter | Enabled |
 | macOS HDR display output | Disabled |
+| Experimental DisplayLink frame pacing | Disabled; toggle in Graphics (lobby) or Graphics → Display (game) |
 | ZkMacOS start message and commander marker | Both enabled; toggle separately in lobby Settings → Game |
 | VSync | Forced on |
 
@@ -395,6 +396,7 @@ pins. Source preparation preserves local checkout changes.
 ```sh
 luajit tests/check-settings.lua
 luajit tests/check-display-sync.lua
+luajit tests/check-display-link-settings.lua
 luajit tests/check-trackpad-settings.lua
 luajit tests/check-macos-announcement.lua
 uv run --python python3 tests/check-cask.py

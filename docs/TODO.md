@@ -25,13 +25,29 @@ DMGs are not currently claimed.
   Native coverage probe: compile `tests/check-notch.mm` with the engine's Mac
   WindowManagerHelper, SDL2 and AppKit, then run with and without `custom`.
 - Investigate intermittent missing Chili panel backgrounds after joining a
-  multiplayer match. The owner requested deferring this while packaging proceeds.
+  multiplayer match. Reported again on Onyx Cauldron 2.2.2 in TAW on October 28:
+  rejoining the same live match retained the problem, while the owner's replay
+  displayed normally. Saved HUD opacity settings were 0.95–1.0; all 1,161
+  inspected UI Lua files and skin assets passed pool checksums. The affected
+  sessions used old Chili, with macOS HDR disabled, and logged no Chili errors.
+  An isolated replay also retained visible panels after starting and skipping to
+  frame 3,600. This does not reproduce a live join. Root cause remains
+  unconfirmed. Compare live join/catch-up rendering with
+  replay playback, including Chili's deferred texture loading and cached display
+  lists. If it recurs, capture it before trying `/luaui reload`; that command
+  rebuilds LuaUI, but recovery of this particular symptom is not yet verified.
 - Optional graphics effects still need individual compatibility work, including
   geometry-shader selection, Xray glow, nightvision and a deferred widget's
   shutdown path. Do not advertise complete GL 4.6 feature support.
 - Measure long-game memory, frame pacing and power use with shared GPU textures
-  and the CPU compatibility path. GPU sharing still waits at API boundaries;
-  investigate GPU event synchronization after validating the shared path.
+  and the CPU compatibility path. GPU event synchronization and reusable Metal
+  uploads now have local native checks and short measurements; validate sustained
+  behavior and mixed-display transitions on more Apple Silicon models.
+- CAMetalDisplayLink is experimental and disabled by default. Initial static and
+  normal-replay samples regressed. Investigate missed presentation deadlines and
+  compare actual displayed intervals before considering it a default. Validate
+  sustained behavior, external-display rate changes and one-frame versus
+  two-frame scheduling on more hardware.
 - Revisit the legacy AnyCPU shared-library build so developers no longer need
   Mono MSBuild. The distributed ARM64 app already bundles its native .NET runtime.
 - Keep upstream source/third-party notices and exact build pins current when

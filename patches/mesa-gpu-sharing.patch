@@ -1,18 +1,39 @@
 --- a/src/gallium/targets/dri/dri_target.c
 +++ b/src/gallium/targets/dri/dri_target.c
-@@ -2,3 +2,32 @@
+@@ -2,3 +2,54 @@
   
  #include "target-helpers/drm_helper.h"
  #include "target-helpers/sw_helper.h"
 +
 +#if defined(__APPLE__) && defined(GALLIUM_ZINK)
 +#include "main/context.h"
++#include "main/glthread.h"
 +#include "main/state.h"
 +#include "state_tracker/st_context.h"
 +#include "pipe/p_screen.h"
++#include "pipe/p_context.h"
 +#include "zink/zink_public.h"
 +
 +PUBLIC bool recoil_mesa_get_vk_color_buffer_v1(void **device, uint64_t *image);
++PUBLIC bool recoil_mesa_flush_gpu_v1(void);
++
++PUBLIC bool
++recoil_mesa_flush_gpu_v1(void)
++{
++   struct gl_context *ctx = _mesa_get_current_context();
++   if (!ctx)
++      return false;
++
++   struct st_context *st = st_context(ctx);
++   if (strncmp(st->screen->get_name(st->screen), "zink ", 5))
++      return false;
++
++   _mesa_glthread_finish(ctx);
++   /* Submit Gallium's threaded work and Zink's batch before the caller signals
++    * the native queue. Flags 0 waits for CPU submission, never GPU completion. */
++   st->pipe->flush(st->pipe, NULL, 0);
++   return true;
++}
 +
 +PUBLIC bool
 +recoil_mesa_get_vk_color_buffer_v1(void **device, uint64_t *image)
@@ -25,6 +46,7 @@
 +   if (strncmp(st->screen->get_name(st->screen), "zink ", 5))
 +      return false;
 +
++   _mesa_glthread_finish(ctx);
 +   _mesa_update_state(ctx);
 +   struct gl_renderbuffer *buffer = ctx->ReadBuffer->_ColorReadBuffer;
 +   if (!buffer || !buffer->texture || buffer->NumSamples > 1)
@@ -35,9 +57,10 @@
 +#endif
 --- a/src/gallium/targets/dri/dri.sym.in
 +++ b/src/gallium/targets/dri/dri.sym.in
-@@ -1,5 +1,6 @@
+@@ -1,5 +1,7 @@
  {
  	global:
++                recoil_mesa_flush_gpu_v1;
 +                recoil_mesa_get_vk_color_buffer_v1;
                  # shared-glapi exported from libgallium:
                  _mesa_glapi_get_dispatch_table_size;
@@ -96,13 +119,24 @@
 +}
 --- a/src/kosmickrisp/vulkan/kk_image.c
 +++ b/src/kosmickrisp/vulkan/kk_image.c
-@@ -20,6 +20,29 @@
+@@ -20,6 +20,40 @@
  #include "vk_enum_to_str.h"
  #include "vk_format.h"
  #include "wsi_common_private.h"
 +
 +PUBLIC bool recoil_kk_get_metal_texture_v1(void *device_handle, uint64_t image_handle,
 +                                          void **device, void **texture);
++PUBLIC void *recoil_kk_get_metal_queue_v1(void *device_handle);
++
++PUBLIC void *
++recoil_kk_get_metal_queue_v1(void *device_handle)
++{
++   if (!device_handle)
++      return NULL;
++
++   VK_FROM_HANDLE(kk_device, dev, (VkDevice)device_handle);
++   return dev->has_queue ? dev->queue.mtl_handle : NULL;
++}
 +
 +PUBLIC bool
 +recoil_kk_get_metal_texture_v1(void *device_handle, uint64_t image_handle,

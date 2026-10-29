@@ -8,7 +8,7 @@ index 418e3aa..3ef446b 100644
  	}
 +	local displayLinkSetting = {
 +		name = "MacDisplayLink", humanName = "Experimental DisplayLink frame pacing",
-+		desc = "Paces frames using the display refresh. Experimental and disabled by default; may reduce performance. Requires GPU resource sharing or HDR display output. Applies immediately.",
++		desc = "Paces frames using the display refresh. Experimental and disabled by default; may reduce performance. Applies immediately.",
 +		defaultFunction = function() return Spring.GetConfigInt("MacDisplayLink", 0) == 1 and "On" or "Off" end,
 +		options = {{name = "Off", apply = {MacDisplayLink = 0}}, {name = "On", apply = {MacDisplayLink = 1}}},
 +	}
@@ -87,7 +87,7 @@ index 2e9bd3f..d3f312b 100644
  	},
 +	displayLink = {
 +		name = "Experimental DisplayLink frame pacing",
-+		desc = "Paces frames using the display refresh. Disabled by default; may reduce performance. Requires GPU resource sharing or HDR display output. Applies immediately.",
++		desc = "Paces frames using the display refresh. Disabled by default; may reduce performance. Applies immediately.",
 +		type = "bool", noSave = true, simpleMode = true, everyMode = true,
 +		value = Spring.GetConfigInt("MacDisplayLink", 0) == 1,
 +		OnChange = function(self)

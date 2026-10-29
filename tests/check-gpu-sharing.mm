@@ -69,13 +69,18 @@ int main(int argc, char** argv)
 	assert(driver);
 	auto getImage = reinterpret_cast<bool (*)(void**, uint64_t*)>(dlsym(eglLibrary, "recoil_mesa_get_vk_color_buffer_v1"));
 	auto getTexture = reinterpret_cast<bool (*)(void*, uint64_t, void**, void**)>(dlsym(driver, "recoil_kk_get_metal_texture_v1"));
-	assert(getImage && getTexture);
+	auto flushGPU = reinterpret_cast<bool (*)()>(dlsym(eglLibrary, "recoil_mesa_flush_gpu_v1"));
+	auto getQueue = reinterpret_cast<void* (*)(void*)>(dlsym(driver, "recoil_kk_get_metal_queue_v1"));
+	assert(getImage && getTexture && flushGPU && getQueue);
+	void* nativeQueue = nullptr;
 	auto nativeTexture = [&]() {
 		void* vkDevice = nullptr;
 		uint64_t image = 0;
 		void* device = nullptr;
 		void* texture = nullptr;
 		assert(getImage(&vkDevice, &image) && getTexture(vkDevice, image, &device, &texture));
+		nativeQueue = getQueue(vkDevice);
+		assert(nativeQueue);
 		return std::pair(device, texture);
 	};
 	for (int pass = 0; pass < 2; ++pass) {
@@ -111,15 +116,20 @@ int main(int argc, char** argv)
 					glClear(GL_COLOR_BUFFER_BIT);
 				}
 				glDisable(GL_SCISSOR_TEST);
-				glFinish();
+				if (pass == 0) glFinish(); else glFlush();
 				auto [device, source] = nativeTexture();
 				glBindFramebuffer(GL_READ_FRAMEBUFFER, outputFBO);
 				auto [outputDevice, output] = nativeTexture();
 				assert(device == outputDevice);
-				if (!MacMetalFX::UpscaleShared(device, source, output)) {
+				if (pass != 0) assert(flushGPU());
+				if (!MacMetalFX::UpscaleShared(device, source, output, pass == 0 ? nullptr : nativeQueue)) {
 					std::fprintf(stderr, "Shared MetalFX failed: %s\n", MacMetalFX::GetError());
 					return 1;
 				}
+				// Queue repeated GL overwrites without CPU readbacks between frames.
+				// The event handoff must protect both producer and consumer access.
+				if (pass != 0 && frame < 4)
+					continue;
 				std::vector<unsigned char> pixels(width * height * 16);
 				// Readback is only an assertion here; the scaler itself shares GPU textures.
 				glReadPixels(0, 0, width * 2, height * 2, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
@@ -165,27 +175,50 @@ int main(int argc, char** argv)
 		layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
 		layer.drawableSize = CGSizeMake(32, 32);
 		layer.framebufferOnly = NO;
-		if (!MacMetalFX::PresentShared(device, image, (__bridge void*)layer)) {
-			std::fprintf(stderr, "Shared presentation failed: %s\n", MacMetalFX::GetError());
-			return 1;
+		for (int presentation = 0; presentation < 2; ++presentation) {
+			assert(flushGPU());
+			bool presented = false;
+			if (presentation == 0) {
+				presented = MacMetalFX::PresentShared(device, image, (__bridge void*)layer, 0.0f, nativeQueue);
+			} else {
+				for (int frame = 0; frame < 8; ++frame) {
+					const int width = frame < 3 ? 32 : frame < 6 ? 127 : 96;
+					std::vector<unsigned char> rgba(width * 32 * 4, 255);
+					for (int y = 0; y < 32; ++y) {
+						for (int x = 0; x < width; ++x) {
+							const int offset = (y * width + x) * 4;
+							rgba[offset] = y < 16 ? (frame == 7 ? 255 : 160 + frame * 10) : 0;
+							rgba[offset + 1] = 0;
+							rgba[offset + 2] = y < 16 ? 0 : 255;
+						}
+					}
+					presented = MacMetalFX::PresentPixels(rgba.data(), width, 32, (__bridge void*)layer);
+					assert(presented);
+				}
+			}
+			if (!presented) {
+				std::fprintf(stderr, "Shared presentation failed: %s\n", MacMetalFX::GetError());
+				return 1;
+			}
+			assert(layer.capturedDrawable);
+			MacMetalFX::WaitShared();
+			id<MTLDevice> metalDevice = layer.device;
+			id<MTLCommandQueue> queue = [metalDevice newCommandQueue];
+			id<MTLBuffer> pixels = [metalDevice newBufferWithLength:32 * 256 options:MTLResourceStorageModeShared];
+			id<MTLCommandBuffer> commands = [queue commandBuffer];
+			id<MTLBlitCommandEncoder> blit = [commands blitCommandEncoder];
+			[blit copyFromTexture:layer.capturedDrawable.texture sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0)
+				sourceSize:MTLSizeMake(32, 32, 1) toBuffer:pixels destinationOffset:0
+				destinationBytesPerRow:256 destinationBytesPerImage:32 * 256];
+			[blit endEncoding];
+			[commands commit];
+			[commands waitUntilCompleted];
+			assert(commands.status == MTLCommandBufferStatusCompleted);
+			const auto* bytes = static_cast<const unsigned char*>(pixels.contents);
+			// Drawable bytes are top-first BGRA. GL's blue top must appear at the top.
+			assert(bytes[8 * 256 + 16 * 4] > 250 && bytes[8 * 256 + 16 * 4 + 2] < 5);
+			assert(bytes[24 * 256 + 16 * 4] < 5 && bytes[24 * 256 + 16 * 4 + 2] > 250);
 		}
-		assert(layer.capturedDrawable);
-		id<MTLDevice> metalDevice = layer.device;
-		id<MTLCommandQueue> queue = [metalDevice newCommandQueue];
-		id<MTLBuffer> pixels = [metalDevice newBufferWithLength:32 * 256 options:MTLResourceStorageModeShared];
-		id<MTLCommandBuffer> commands = [queue commandBuffer];
-		id<MTLBlitCommandEncoder> blit = [commands blitCommandEncoder];
-		[blit copyFromTexture:layer.capturedDrawable.texture sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0)
-			sourceSize:MTLSizeMake(32, 32, 1) toBuffer:pixels destinationOffset:0
-			destinationBytesPerRow:256 destinationBytesPerImage:32 * 256];
-		[blit endEncoding];
-		[commands commit];
-		[commands waitUntilCompleted];
-		assert(commands.status == MTLCommandBufferStatusCompleted);
-		const auto* bytes = static_cast<const unsigned char*>(pixels.contents);
-		// Drawable bytes are top-first BGRA. GL's blue top must appear at the top.
-		assert(bytes[8 * 256 + 16 * 4] > 250 && bytes[8 * 256 + 16 * 4 + 2] < 5);
-		assert(bytes[24 * 256 + 16 * 4] < 5 && bytes[24 * 256 + 16 * 4 + 2] > 250);
 		MacMetalFX::Destroy();
 	}
 	// HDR uses an offscreen GL float framebuffer rather than Zink's pbuffer.
@@ -230,7 +263,9 @@ int main(int argc, char** argv)
 		layer.pixelFormat = MTLPixelFormatRGBA16Float;
 		layer.drawableSize = CGSizeMake(32, 32);
 		layer.framebufferOnly = NO;
-		assert(MacMetalFX::PresentShared(hdrDevice, hdrOutput, (__bridge void*)layer, 4.0f));
+		assert(flushGPU());
+		assert(MacMetalFX::PresentShared(hdrDevice, hdrOutput, (__bridge void*)layer, 4.0f, nativeQueue));
+		MacMetalFX::WaitShared();
 		assert(layer.capturedDrawable);
 		id<MTLBuffer> buffer = [layer.device newBufferWithLength:32 * 256 options:MTLResourceStorageModeShared];
 		id<MTLCommandBuffer> commands = [[layer.device newCommandQueue] commandBuffer];
@@ -303,5 +338,5 @@ void main() {
 	eglDestroyContext(display, context);
 	eglDestroySurface(display, surface);
 	eglTerminate(display);
-	std::puts("PASS: Mesa/MetalFX GPU sharing, repeated writes, resize, color, orientation, cleanup, SDR/HDR presentation orientation, SDR UI compositing and legacy map-edge alpha clamping");
+	std::puts("PASS: GPU events, reusable uploads, SDR/HDR orientation, SDR UI composition and legacy map-edge alpha clamping");
 }
