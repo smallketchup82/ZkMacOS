@@ -57,7 +57,7 @@ class LocalReleaseChecks(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'uploads are missing'):
                 release.create_draft(display, '202610.29.0', 'a' * 40, Path('/tmp/notes.md'))
 
-    def test_source_check_accepts_patches_and_rejects_additional_changes(self):
+    def test_source_check_requires_clean_pinned_fork_commits(self):
         with tempfile.TemporaryDirectory() as folder:
             folder = Path(folder)
             source = folder / 'source'
@@ -69,17 +69,40 @@ class LocalReleaseChecks(unittest.TestCase):
             git('add', '.')
             git('-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', 'commit', '-qm', 'base')
             revision = git('rev-parse', 'HEAD')
-            (source / 'code.txt').write_text('patched\n')
-            source_patch = folder / 'feature.patch'
-            source_patch.write_text(git('diff') + '\n')
-            release.check_source(source, revision, [source_patch])
-            (source / 'code.txt').write_text('patched\nextra change\n')
-            with self.assertRaisesRegex(ValueError, 'differs from'):
-                release.check_source(source, revision, [source_patch])
-            (source / 'code.txt').write_text('patched\n')
+            release.check_source(source, revision)
+            with self.assertRaisesRegex(ValueError, 'not at its release pin'):
+                release.check_source(source, '0' * 40)
+            (source / 'code.txt').write_text('uncommitted feature\n')
+            with self.assertRaisesRegex(ValueError, 'uncommitted source'):
+                release.check_source(source, revision)
+            git('checkout', '--', 'code.txt')
             (source / 'surprise.lua').write_text('untracked feature\n')
-            with self.assertRaisesRegex(ValueError, 'outside the release patches'):
-                release.check_source(source, revision, [source_patch])
+            with self.assertRaisesRegex(ValueError, 'uncommitted source'):
+                release.check_source(source, revision)
+
+    def test_source_fetcher_checks_out_pin_and_preserves_developer_edits(self):
+        spec = importlib.util.spec_from_file_location('fetch_sources', root / 'scripts/fetch-sources.py')
+        fetcher = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(fetcher)
+        with tempfile.TemporaryDirectory() as folder:
+            folder = Path(folder)
+            source = folder / 'fork'
+            source.mkdir()
+            def git(*arguments):
+                return subprocess.check_output(['git', '-C', str(source), *arguments], text=True).strip()
+            git('init', '-q')
+            (source / 'feature.txt').write_text('committed macOS feature\n')
+            git('add', '.')
+            git('-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', 'commit', '-qm', 'port')
+            revision = git('rev-parse', 'HEAD')
+            destination = folder / 'checkout'
+            pin = {'url': str(source), 'revision': revision}
+            fetcher.prepare_source(destination, pin)
+            release.check_source(destination, revision)
+            self.assertEqual((destination / 'feature.txt').read_text(), 'committed macOS feature\n')
+            (destination / 'feature.txt').write_text('local work in progress\n')
+            fetcher.prepare_source(destination, pin)
+            self.assertEqual((destination / 'feature.txt').read_text(), 'local work in progress\n')
 
     def test_progress_records_failure_and_does_not_pass_signing_key_to_children(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(build_progress, 'ROOT', Path(folder)), \

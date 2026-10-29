@@ -1,30 +1,16 @@
 {
   "recoil": {
     "url": "https://github.com/smallketchup82/RecoilEngine.git",
-    "revision": "608ed900905f2ec86cc6d550bdaebf1d816f2138",
+    "revision": "199b752a79f5c9211d88986c98bef1482ea2f1f9",
     "engine_version": "2026.07.04",
     "upstream_base": "de69361239d8c8b1012dba3f5aa3122954ea4da3",
-    "circuitai_patch_sha256": "d735584e956555895756ae2d6cc542e40f5433398f0eff7fdc6d0cc0a47970ea",
-    "patches": {
-      "recoil-metalfx-spatial.patch": "1f8f2610f47c60a5d26942e366ebf8b531f7cb2f835867245704f16588dd25ca",
-      "recoil-macos-fullscreen.patch": "a9ddc3ad5ec223846146e7711463eeb3658820a7a2da91bab23f32a7eed186a5",
-      "recoil-macos-notch.patch": "ec79b90d25fa2db4bcfa3794962131dfacbf43dda3697110cbcc379d586aed99",
-      "recoil-macos-update-menu.patch": "94acbc25f1cfbbbaed40da2ab6a67411d21d1582305f9b5f488fdd7d14805c48",
-      "recoil-macos-hdr.patch": "e387d561126e88872b9a7d89e32e4a915c67bb77979380cbecabe95229909c93",
-      "recoil-macos-display-link.patch": "bf60cd179e6208a9153a0b8a626affa6112fe60d0ce95882c4f25b4bd28dbf1c",
-      "recoil-macos-frame-pacing.patch": "31da147e842299ed80a9cc4e61a93da271230d2a6d772ed7cfe4d124afe67ad6"
-    }
+    "branch": "macos/2026.07.04",
+    "upstream_tag": "2026.07.04"
   },
   "chobby": {
     "url": "https://github.com/smallketchup82/Chobby.git",
-    "revision": "fbcc816be8970fa26d6bf3aa14c238ce70af2530",
-    "patches": {
-      "chobby-metalfx-spatial.patch": "ae848f22a0b9834136effd44a1f601b7f2889d56e70d44befed19e36604283f4",
-      "chobby-macos-notch.patch": "ff7ddc704342c826bcf0b2779a7eb12e8de3dcd70dd944e791e456735129ad19",
-      "chobby-macos-hdr.patch": "14b7d1fb47a8e5e8f259df8341c36b645312ba1bc565f9cf0b5ae0dc2e8ad714",
-      "chobby-macos-display-link.patch": "0248ecfc8cc95871d1f205e9ad7c0784c2e516494053776b18fcb1e2b5c90f17",
-      "chobby-macos-announcement.patch": "46e384001a2ccbbf25fc94dc550e554191387d0cffbb78f6fef81c5624544481"
-    }
+    "revision": "dfe8547c2f32eadf909003708815d709a7a0385d",
+    "branch": "macos-port"
   },
   "infrastructure": {
     "url": "https://github.com/smallketchup82/Zero-K-Infrastructure.git",

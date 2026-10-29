@@ -44,35 +44,19 @@ def check_key(private_key, public_key):
         raise ValueError('Private-key backup does not match SPARKLE_PUBLIC_ED_KEY. Reuse the production signing key.')
 
 
-def check_source(path, revision, patches):
-    """Compare the checkout to its pinned revision plus the exact release patches."""
+def check_source(path, revision, *, allow_uninitialized=False):
+    """A release uses clean fork commits and exactly their recorded submodules."""
     actual = subprocess.check_output(['git', '-C', str(path), 'rev-parse', 'HEAD'], text=True).strip()
     if actual != revision:
         raise ValueError(f'{path}: checkout is not at its release pin.')
-    changed = subprocess.check_output(['git', '-C', str(path), 'diff', '--name-only', '--ignore-submodules=all', 'HEAD'], text=True).splitlines()
-    untracked = subprocess.check_output(['git', '-C', str(path), 'ls-files', '--others', '--exclude-standard'], text=True).splitlines()
-    expected = set()
-    with tempfile.TemporaryDirectory(prefix='zk-release-sources-') as folder:
-        folder = Path(folder)
-        for patch in patches:
-            for row in subprocess.check_output(['git', 'apply', '--numstat', str(patch)], text=True).splitlines():
-                name = row.split('\t', 2)[2]
-                if name in expected:
-                    continue
-                expected.add(name)
-                base = subprocess.run(['git', '-C', str(path), 'show', revision + ':' + name], capture_output=True)
-                if base.returncode == 0:
-                    target = folder / name
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_bytes(base.stdout)
-            subprocess.run(['git', 'apply', '--whitespace=nowarn', str(patch)], cwd=folder, check=True)
-        extra = set(changed + untracked) - expected
-        if extra:
-            raise ValueError(f'{path}: changes outside the release patches: ' + ', '.join(sorted(extra)))
-        for name in expected:
-            target, actual = folder / name, path / name
-            if target.exists() != actual.exists() or (target.exists() and target.read_bytes() != actual.read_bytes()):
-                raise ValueError(f'{path / name}: differs from the release patch stack.')
+    changes = subprocess.check_output(['git', '-C', str(path), 'status', '--porcelain',
+                                       '--untracked-files=all', '--ignore-submodules=none'], text=True).strip()
+    if changes:
+        raise ValueError(f'{path}: uncommitted source or submodule changes:\n' + changes)
+    modules = subprocess.check_output(['git', '-C', str(path), 'submodule', 'status', '--recursive'], text=True)
+    for line in modules.splitlines():
+        if line.startswith(('+', 'U')) or (line.startswith('-') and not allow_uninitialized):
+            raise ValueError(f'{path}: submodule does not match its committed revision: ' + line)
 
 
 def check_sources(*, allow_missing=False):
@@ -81,19 +65,7 @@ def check_sources(*, allow_missing=False):
         path = ROOT / 'external' / name
         if allow_missing and not (path / '.git').exists():
             continue
-        patches = [ROOT / 'patches' / filename for filename in item.get('patches', {})]
-        for patch, digest in zip(patches, item.get('patches', {}).values()):
-            if hashlib.sha256(patch.read_bytes()).hexdigest() != digest:
-                raise ValueError(patch.name + ' does not match sources.lock.json.')
-        check_source(path, item['revision'], patches)
-    engine = ROOT / 'external/recoil'
-    if allow_missing and not (engine / '.git').exists():
-        return
-    circuit_revision = subprocess.check_output(['git', '-C', str(engine), 'rev-parse', 'HEAD:AI/Skirmish/CircuitAI'], text=True).strip()
-    circuit_patch = ROOT / 'patches/circuitai-apple-arm64.patch'
-    if hashlib.sha256(circuit_patch.read_bytes()).hexdigest() != pins['recoil']['circuitai_patch_sha256']:
-        raise ValueError('CircuitAI patch does not match sources.lock.json.')
-    check_source(engine / 'AI/Skirmish/CircuitAI', circuit_revision, [circuit_patch])
+        check_source(path, item['revision'], allow_uninitialized=allow_missing)
 
 
 def preflight(args):

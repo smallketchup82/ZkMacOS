@@ -1,7 +1,7 @@
 # MetalFX spatial upscaling
 
 OpenAI Codex assisted with the MetalFX bridge, settings integration, packaging
-patches and validation described here.
+fork commits and validation described here.
 
 `MacMetalFXSpatial = 1` replaces the world-color bilinear blit in
 `MacRetinaMode = 1` with Apple's `MTLFXSpatialScaler`. The world still renders
@@ -64,8 +64,10 @@ resources are released with the GL context. The ordinary SDR input is display-re
 RGBA8, so MetalFX uses perceptual processing without an additional sRGB
 conversion. The CPU compatibility readback stride is padded to 256 bytes.
 
-Engine and lobby changes live in checksum-verified patches in `patches/` so
-clean source checkouts receive them through `scripts/fetch-sources.py`.
+Engine and lobby changes are committed directly to their forks.
+`sources.lock.json` pins those commits; `scripts/fetch-sources.py` checks them out
+without applying a separate patch stack. CircuitAI is pinned by the engine
+fork's submodule commit.
 `patches/mesa-gpu-sharing.patch` is checksum-pinned in `assets.lock.json` and
 applied by `scripts/build-mesa.sh`. A build-input fingerprint prevents an old
 unpatched Mesa installation from being silently reused. The release cache key

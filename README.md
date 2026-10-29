@@ -388,10 +388,12 @@ RECONFIGURE_ENGINE=1 ./scripts/build-app.sh
 ### Making changes and checking them
 
 This repository holds the bootstrap, clean defaults, build scripts, packaging,
-tests, patches, and version pins. The engine, lobby, and helper are separate
-fork checkouts under the ignored `external/` directory. Edit the relevant fork
+tests, third-party dependency patches, and version pins. The engine, lobby, and
+helper are separate fork checkouts under the ignored `external/` directory. Edit the relevant fork
 there, rebuild, and commit validated fork changes before updating the release
-pins. Source preparation preserves local checkout changes.
+pins. Engine, lobby and CircuitAI changes belong in their fork commits; only
+Mesa and create-dmg compatibility patches remain in this repository. Source
+preparation preserves local checkout changes.
 
 ```sh
 luajit tests/check-settings.lua
@@ -497,7 +499,7 @@ Build and prepare a release locally with one command:
 
 Authenticate once with `gh auth login` and install the dependencies in `Brewfile`.
 Run from a clean `main` matching GitHub `main`; the pinned engine, lobby, helper
-and CircuitAI checkouts must match their patches. The script uses your existing
+checkouts must be clean at their pinned commits, including engine submodules. The script uses your existing
 local engine/Mesa/compiler caches, so unchanged native code is not rebuilt.
 The GitHub Actions build workflow remains available for optional use.
 
@@ -621,6 +623,7 @@ source revisions under `Contents/Resources/`.
 | --- | --- | --- |
 | Recoil engine | [smallketchup82/RecoilEngine](https://github.com/smallketchup82/RecoilEngine), `macos/2026.07.04` | [RecoilEngine](https://github.com/beyond-all-reason/RecoilEngine) |
 | Chobby lobby and macOS game widgets | [smallketchup82/Chobby](https://github.com/smallketchup82/Chobby), `macos-port` | [ZeroK-RTS/Chobby](https://github.com/ZeroK-RTS/Chobby) |
+| CircuitAI and AngelScript | [smallketchup82/CircuitAI](https://github.com/smallketchup82/CircuitAI), `codex/macos-arm64` | [rlcevg/CircuitAI](https://github.com/rlcevg/CircuitAI) |
 | Launcher and native Steam helper | [smallketchup82/Zero-K-Infrastructure](https://github.com/smallketchup82/Zero-K-Infrastructure), `macos-port` | [ZeroK-RTS/Zero-K-Infrastructure](https://github.com/ZeroK-RTS/Zero-K-Infrastructure) |
 
 The exact commits are in `sources.lock.json`. The central repository does not
@@ -631,7 +634,8 @@ vendor full copies of these projects.
 - **Mesa, Zink, and KosmicKrisp:** the experimental GPU rendering stack;
   [Mesa upstream](https://gitlab.freedesktop.org/mesa/mesa).
 - **CircuitAI and its dependencies:** the engine's bundled skirmish AI, with a
-  version-specific Apple ARM64 patch in this repository.
+  committed Apple ARM64 support in the CircuitAI fork, pinned by the engine
+  fork's submodule.
 - **Steamworks.NET and Valve's Steam API:** Steam integration;
   [Steamworks.NET](https://github.com/rlabrecque/Steamworks.NET). The binding's
   license and Valve's binary redistribution terms are separate.
