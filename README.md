@@ -7,7 +7,8 @@ or newer**.
 
 **[Download the DMG](https://github.com/smallketchup82/ZkMacOS/releases/latest)** ·
 [Installation guide](https://github.com/smallketchup82/ZkMacOS/wiki/Installation) ·
-[Wiki](https://github.com/smallketchup82/ZkMacOS/wiki)
+[Wiki](https://github.com/smallketchup82/ZkMacOS/wiki) ·
+[Discord](https://nk.smkt.ca)
 
 # ⚠️ READ BEFORE PLAYING ⚠️ 
 > 1. **DO NOT send ZkMacOS bug reports to the official Zero-K developers. [File issues in this repository](https://github.com/smallketchup82/ZkMacOS/issues) instead.**
